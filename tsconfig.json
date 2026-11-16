@@ -1,3 +1,22 @@
 {
-  "extends": "./node_modules/tsconfig-jaid-bun/base.json"
+  "extends": "./node_modules/tsconfig-jaid-bun/base.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false,
+    "noEmit": true,
+    "allowJs": false,
+    "composite": false,
+    "incremental": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "examples/**/*.ts",
+    "test/**/*.ts",
+    "eslint.config.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
 }

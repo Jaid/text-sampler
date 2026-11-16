@@ -2,6 +2,7 @@
   "name": "text-sampler",
   "version": "0.1.0",
   "type": "module",
+  "description": "Deterministic text generation from composable sentence segments",
   "funding": "https://github.com/sponsors/Jaid",
   "license": "MIT",
   "repository": {
@@ -10,7 +11,12 @@
   },
   "exports": {
     ".": {
-      "default": "./src/main.ts"
+      "types": "./dist/main.d.ts",
+      "default": "./dist/main.js"
+    },
+    "./parser": {
+      "types": "./dist/parser.d.ts",
+      "default": "./dist/parser.js"
     }
   },
   "imports": {
@@ -18,7 +24,12 @@
     "#root/*": "./*"
   },
   "scripts": {
-    "test": "bun test --max-concurrency 1 ./test"
+    "build": "bun run clean && tsc --project tsconfig.build.json",
+    "clean": "bun -e \"import {rmSync} from 'node:fs'; rmSync('dist', {recursive: true, force: true})\"",
+    "lint": "bunx --bun eslint .",
+    "prepack": "bun run build",
+    "test": "bun test --max-concurrency 1 ./test",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "devDependencies": {
     "eslint": "10.15.0",
@@ -26,5 +37,13 @@
     "tsconfig-jaid-bun": "16.0.0",
     "typescript": "npm:typescript-classic@6.0.4",
     "@types/bun": "1.4.4"
-  }
+  },
+  "files": [
+    "dist",
+    "license.txt",
+    "readme.md"
+  ],
+  "packageManager": "bun@1.4.4",
+  "sideEffects": false,
+  "types": "./dist/main.d.ts"
 }
