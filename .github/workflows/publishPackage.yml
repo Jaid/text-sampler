@@ -26,6 +26,8 @@ jobs:
       run: bun run lint
     - name: build
       run: bun run build
+    - name: verifyReadme
+      run: git diff --exit-code -- readme.md
     - name: publish
       run: bun publish
       env:

@@ -7,12 +7,18 @@
     "noEmit": true,
     "allowJs": false,
     "composite": false,
-    "incremental": false
+    "incremental": false,
+    "paths": {
+      "text-sampler": [
+        "./src/main.ts"
+      ]
+    }
   },
   "include": [
     "src/**/*.ts",
     "examples/**/*.ts",
     "test/**/*.ts",
+    "docs/tldw/**/*.ts",
     "eslint.config.ts"
   ],
   "exclude": [

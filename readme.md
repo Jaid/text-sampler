@@ -1,61 +1,65 @@
+<center><a href="https://npmjs.com/package/text-sampler"><img src="https://shieldcn.dev/npm/v/text-sampler.svg?variant=secondary&logo=npm&label=latest+version" alt="Latest version on npm"/></a> <a href="https://github.com/Jaid/text-sampler/raw/HEAD/license.txt"><img src="https://shieldcn.dev/github/license/Jaid/text-sampler.svg?variant=secondary" alt="License"/></a></center>
+
 # text-sampler
+
+Deterministic text generation from composable sentence segments
 
 Compose reproducible text from nested choices, optional segments and exact joining rules. Supply a sentence and a seed to get a string, or inspect every emitted fragment with its original segment ID and names.
 
 The package has no runtime dependencies. It ships JavaScript ES modules and TypeScript declarations for Node.js, Bun and browser bundlers. Parsing editable source is available separately through `text-sampler/parser`.
 
-## Install
+## minimal example
+
+Provide a typed sentence and a seed to obtain deterministic text without modifying the input. The same sentence and seed always produce the same result.
+
+The full art prompt from the playground is in [examples/gallery.ts](https://github.com/Jaid/text-sampler/blob/main/examples/gallery.ts). A shorthand example is in [examples/list.ts](https://github.com/Jaid/text-sampler/blob/main/examples/list.ts).
+
+```ts
+import type {Sentence} from 'text-sampler'
+
+import textSampler, {generateSentence} from 'text-sampler'
+
+const sentence = [
+  'Please make ',
+  {
+    token: 'a',
+    suffix: ' ',
+  },
+  {
+    name: 'qualities',
+    items: ['elegant', 'detailed', 'luminous'],
+    count: {
+      min: 0,
+      max: 2,
+    },
+    joiner: ' ',
+    suffix: ' ',
+  },
+  {
+    name: 'medium',
+    items: ['oil painting', 'artwork'],
+  },
+] as const satisfies Sentence
+const seed = 42
+const text = textSampler(sentence, seed)
+const result = generateSentence(sentence, seed)
+console.log(text)
+console.log(result.fragments)
+```
+
+## installation
+
+Install from npm:
 
 ```sh
 npm install text-sampler
 ```
 
-## Quick start
+The package ships ESM entry points for Node.js, Bun and browser bundlers. It does not provide a standalone browser `<script>` bundle.
 
-```ts
-import textSampler, {generateSentence, type Sentence} from 'text-sampler'
+## usage
 
-const sentence = [
-  'Please make ',
-  {token: 'a', suffix: ' '},
-  {
-    name: 'qualities',
-    items: ['elegant', 'detailed', 'luminous'],
-    count: {min: 0, max: 2},
-    joiner: ' ',
-    suffix: ' ',
-  },
-  {name: 'medium', items: ['oil painting', 'artwork']},
-] as const satisfies Sentence
-
-const seed = 42
-const text = textSampler(sentence, seed)
-const result = generateSentence(sentence, seed)
-
-console.log(text)
-console.log(result.fragments)
-```
-
-The same sentence and seed produce the same complete result. Change the seed to reroll. Inputs are never modified, so the same readonly or frozen sentence can be reused.
-
-The full art prompt from the playground is in [examples/gallery.ts](https://github.com/Jaid/text-sampler/blob/main/examples/gallery.ts). A minimal shorthand example is in [examples/list.ts](https://github.com/Jaid/text-sampler/blob/main/examples/list.ts).
-
-## API
-
-| Export | Result |
-| --- | --- |
-| `textSampler(sentence, seed)` (default export) | The generated string. |
-| `generateSentence(sentence, seed)` | Text, fragments, sample selections and article resolutions. |
-| `validateSentence(value)` | The same input after validation, typed as `Sentence`. Throws on invalid data; does not normalize or copy it. |
-| `SentenceValidationError` | A `TypeError` with a `path`, such as `sentence[2].items[0].chance`. |
-| `parseSource(source)` from `text-sampler/parser` | A validated sentence parsed from literal source text. |
-| `SourceSyntaxError` from `text-sampler/parser` | A `SyntaxError` with `offset`, `line` and `column`. |
-
-Seeds are required integers from `0` to `4294967295`, inclusive. An invalid seed throws `RangeError`. Each generation uses its own random state; calls do not affect one another and do not use `Math.random()`.
-
-The root also exports the input and result types, including `Sentence`, `Segment`, `SemanticSegment`, `Sample`, `CustomSample`, `ListSample`, `TextSegment`, `IndefiniteArticle`, `JoinSegment`, `SegmentMetadata`, `SegmentConfiguration`, `InnerJoiner`, `OuterJoiner` and `GenerationResult`.
-
-## Sentence data
+### Sentence data
 
 A `Sentence` is a readonly array of segments. Both custom-sample `items` and list samples accept readonly arrays, so plain arrays and `as const satisfies Sentence` both work.
 
@@ -71,7 +75,7 @@ A `Sentence` is a readonly array of segments. Both custom-sample `items` and lis
 
 Every configurable object segment accepts `name`, `prefix`, `suffix` and `chance`. A primitive string is always literal; wrap it in `{text: '…'}` to attach these properties. A `ListSample` is a bare array of strings without configuration.
 
-### Defaults
+#### Defaults
 
 | Property | Default |
 | --- | --- |
@@ -84,7 +88,7 @@ Every configurable object segment accepts `name`, `prefix`, `suffix` and `chance
 
 Properties with defaults are optional in the public types. Explicit `undefined` is treated as omission for optional properties. `null` is invalid. `SegmentConfiguration` applies to all object-style semantic segments, including custom samples, articles, text and fallback joiners. List samples have no configuration.
 
-### List samples
+#### List samples
 
 `Sample` is the union of a configurable `CustomSample` and a shorthand `ListSample`:
 
@@ -108,7 +112,7 @@ const result = generateSentence(sentence, 42)
 
 The outer array is always the sentence. `['A', 'B']` emits `AB`; `[['A', 'B']]` samples one of the two strings. In particular, `[[null, 'hello']]` yields either `''` or `'hello'` with equal probability; `[null, 'hello']` alone is a sentence that always emits `'hello'`. `null` is weighted like any other item, not removed before sampling. `ListSample` entries must be strings or `null`—not objects, numbers, or nested arrays. Use `CustomSample` for options such as `count`, `chance`, `prefix`, `suffix`, `joiner`, or `name`, or to sample arbitrary nested segments.
 
-### Custom samples and counts
+#### Custom samples and counts
 
 ```ts
 const sample = {
@@ -125,7 +129,7 @@ The maximum count must not exceed `items.length`. To represent an empty pool, us
 
 Inner joiners are inserted only between surviving child outputs; a selected `null` adds no joiner or sample affixes. A string supplies every gap. For an object joiner, `first` replaces the first gap and `last` replaces the final gap; `last` takes precedence when there are exactly two outputs. Empty outputs do not leave stray inner separators.
 
-### Inclusion chance
+#### Inclusion chance
 
 ```ts
 const sentence = [
@@ -141,7 +145,7 @@ A list sample containing `[null, 'hello']` behaves roughly like `{text: 'hello',
 
 The random stream follows sentence order and selected child order. Editing an earlier random choice can change later choices for the same seed. Segment names are metadata and do not influence randomness.
 
-## Joining without normalization
+### Joining without normalization
 
 Text is concatenated exactly. The library does not trim output, collapse spaces, insert spaces around words or change punctuation. Leading, repeated and trailing whitespace in literal text is preserved. A whitespace-only body is meaningful output.
 
@@ -165,7 +169,7 @@ textSampler([
 
 Only a suffix followed by a prefix can merge. Literal whitespace blocks that adjacency. Nested prefix–prefix or suffix–suffix pairs remain distinct, and an affix participates in an outer merge only once.
 
-### Fallback joiners
+#### Fallback joiners
 
 Use a `JoinSegment` when optional content may otherwise remove a needed separator:
 
@@ -192,7 +196,7 @@ Equal adjacent fallbacks coalesce, including when omitted segments lie between t
 
 The last row preserves the suffix, fallback and prefix. A JoinSegment's own prefix and suffix do not swallow its body.
 
-## Indefinite articles
+### Indefinite articles
 
 `{token: 'a'}` resolves after selection and joining. It looks ahead to the first emitted word, skipping punctuation and omitted segments. Words can span fragments.
 
@@ -204,7 +208,9 @@ textSampler([{token: 'a', suffix: ' '}, {text: 'SQL query', an: true}], 0) // 'a
 
 The English heuristic handles common silent consonants, vowel sounds and initialisms. It is not a pronunciation dictionary. Use `an: true` or `an: false` on a `TextSegment` for deliberate or ambiguous pronunciation. The hint applies to that text body; a preceding word emitted by its prefix determines the article first. With no following word, the token emits `a`.
 
-## Inspecting output
+## advanced usage
+
+### Inspecting output
 
 `generateSentence` returns:
 
@@ -215,7 +221,7 @@ The English heuristic handles common silent consonants, vowel sounds and initial
 | `selections` | Samples visited, the requested count, selected item output and any chance skip. |
 | `articleResolutions` | Each article's final `a`/`an` value and the following word. |
 
-### Segment IDs and names
+#### Segment IDs and names
 
 IDs are zero-based arrays of **original input indices**, never positions in the randomized output. A top-level literal uses `[0]`; an item at index `3` inside the sample at index `2` uses `[2, 3]`. Deeper nesting adds indices. A `ListSample` at `[2]` emits its chosen string with an ID such as `[2, 1]`, while its selection diagnostics use `[2]`. A selected `null` has no output fragment; the sample selection still reports `count: 1` and `items: ['']`.
 
@@ -245,13 +251,13 @@ result.fragments.map(fragment => fragment.text).join('') === result.text
 
 For a playground, render each fragment in a span and use its `id`, `name`, `ancestors` and `contributors` for the hover tooltip. Render text as text content, not HTML.
 
-### Selection diagnostics
+#### Selection diagnostics
 
 Selections are reported in traversal order, with a parent before its visited children. `path` is a readable source path such as `sentence[1].items[2]`. `name` falls back to that path when the sample has no name.
 
 `count` is the number of positions selected before child chance filtering. `items` contains their final text contributions in sampled order and can contain empty strings for omitted or absorbed output. `text` contains that sample's final emitted contribution, including surviving affixes. A sample skipped by chance has `skipReason: 'chance'`, a count of zero and no visited child selections.
 
-## Parsing editor input
+### Parsing editor input
 
 Ordinary callers pass sentence data directly. The optional parser accepts editable literal source without executing it:
 
@@ -281,24 +287,69 @@ Type aliases are skipped as balanced syntax, not type-checked. Functions, calls,
 
 `SourceSyntaxError.line` and `.column` are one-based positions in the original input, including a code fence when present. `.offset` is a zero-based UTF-16 offset. Valid syntax with an invalid sentence shape throws `SentenceValidationError` instead.
 
-## Validation
+### Validation
 
 Generation validates the complete input, including unselected and chance-skipped branches. `null` is allowed as a segment (including inside both sample kinds), but it is not allowed as a configuration value such as `chance` or `count`. Unknown properties, mixed segment shapes, invalid counts or chances, empty list samples, list entries other than strings or `null`, sparse arrays and circular samples are rejected with a source path. Shared non-circular subtrees are valid.
 
 Validation permits at most 10 000 segment occurrences and 64 nested sample levels. The parser additionally limits input to 1 000 000 characters and 100 000 tokens. These limits apply without rewriting the supplied data.
 
-## Development
+## API
+
+| Export | Result |
+| --- | --- |
+| `textSampler(sentence, seed)` (default export) | The generated string. |
+| `generateSentence(sentence, seed)` | Text, fragments, sample selections and article resolutions. |
+| `validateSentence(value)` | The same input after validation, typed as `Sentence`. Throws on invalid data; does not normalize or copy it. |
+| `SentenceValidationError` | A `TypeError` with a `path`, such as `sentence[2].items[0].chance`. |
+| `parseSource(source)` from `text-sampler/parser` | A validated sentence parsed from literal source text. |
+| `SourceSyntaxError` from `text-sampler/parser` | A `SyntaxError` with `offset`, `line` and `column`. |
+
+Seeds are required integers from `0` to `4294967295`, inclusive. An invalid seed throws `RangeError`. Each generation uses its own random state; calls do not affect one another and do not use `Math.random()`.
+
+The root also exports the input and result types, including `Sentence`, `Segment`, `SemanticSegment`, `Sample`, `CustomSample`, `ListSample`, `TextSegment`, `IndefiniteArticle`, `JoinSegment`, `SegmentMetadata`, `SegmentConfiguration`, `InnerJoiner`, `OuterJoiner` and `GenerationResult`.
+
+## development
+
+### Documentation and release
+
+Maintain documentation in `docs/tldw/`. The root `readme.md` is generated; do not edit it directly. Run `bun run readme` to regenerate it.
+
+`bun run build` regenerates the README and compiles ESM JavaScript with TypeScript declarations into `dist`. `prepack` invokes the same build automatically for npm packages. The tagged release workflow validates types, tests, lint and build before publishing.
+
+For reproducible development installs, use `bun install --frozen-lockfile`.
+
+### setting up
 
 ```sh
-bun install --frozen-lockfile
-bun run typecheck
-bun test
-bun run lint
-bun run build
+git clone git@github.com:Jaid/text-sampler.git
+cd text-sampler
+bun install
 ```
 
-`build` emits JavaScript and declarations into `dist`. `prepack` builds the publishable package. The existing release workflow tests and checks the package before publishing on a `v*` tag.
+### linting
 
-## License
+```sh
+bun run lint
+```
 
-MIT. See [license.txt](license.txt).
+### type checking
+
+```sh
+bun run typecheck
+```
+
+### testing
+
+```sh
+bun run test
+```
+
+## license
+
+[MIT License](https://github.com/Jaid/text-sampler/raw/HEAD/license.txt)<br>
+Copyright © 2026, Jaid \<jaid.jsx@gmail.com> (https://github.com/jaid)
+
+<!--
+readme generated with tldw v9.9.0 from ./docs/tldw
+github.com/Jaid/tldw
+-->
