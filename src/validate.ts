@@ -8,7 +8,9 @@ interface ValidationState {
   visited: number
 }
 
-/** Validate data and return the original sentence without rewriting it. */
+/**
+ * Validate data and return the original sentence without rewriting it.
+ */
 export function validateSentence(value: unknown): Sentence {
   checkArray(value, 'sentence', 0, {
     visited: 0,

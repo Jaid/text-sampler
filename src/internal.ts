@@ -1,7 +1,9 @@
 export const MAX_DEPTH = 64
 export const MAX_SEGMENTS = 10_000
 
-/** Mulberry32, with a fixed stream shared by chance and sampling decisions. */
+/**
+ * Mulberry32, with a fixed stream shared by chance and sampling decisions.
+ */
 export function seededRandom(seed: number): () => number {
   let state = seed >>> 0
   return () => {

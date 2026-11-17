@@ -33,7 +33,9 @@ export function parseSource(input: string): Sentence {
   return validateSentence(parser.parse())
 }
 
-/** A literal-source syntax error, with a location in the original input. */
+/**
+ * A literal-source syntax error, with a location in the original input.
+ */
 export class SourceSyntaxError extends SyntaxError {
   readonly column: number
   readonly line: number

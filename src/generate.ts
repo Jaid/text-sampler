@@ -90,7 +90,9 @@ interface PendingSelection extends Identity {
 
 type MutableFragment = Omit<Fragment, 'text'> & {text: string}
 
-/** Generate exact text and source provenance from an unsigned 32-bit seed. */
+/**
+ * Generate exact text and source provenance from an unsigned 32-bit seed.
+ */
 export function generateSentence(sentence: Sentence, seed: number): GenerationResult {
   validateSentence(sentence)
   if (!Number.isInteger(seed) || seed < 0 || seed > 4_294_967_295) {
