@@ -103,6 +103,9 @@ export function generateSentence(sentence: Sentence, seed: number): GenerationRe
   const pendingSelections: Array<PendingSelection> = []
   const leaves: Array<LeafNode> = []
   function realize(segment: Segment, path: string, id: SegmentId, ancestors: ReadonlyArray<SegmentReference>): RealizedNode | null {
+    if (segment === null) {
+      return null
+    }
     if (typeof segment === 'string') {
       const node: LiteralNode = {
         ...identity(path, id, ancestors),

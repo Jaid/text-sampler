@@ -26,7 +26,7 @@ test('every playground example and the complete current schema generate successf
 test('the revised TypeScript intersections and joiner types parse without evaluating types', () => {
   const sentence = parseSource(`
     type Sentence = Segment[]
-    type Segment = string | SemanticSegment
+    type Segment = string | SemanticSegment | null
     type SemanticSegment = Sample | (SegmentMetadata & SegmentConfiguration & (IndefiniteArticle | TextSegment | JoinSegment))
     type SegmentMetadata = {name?: string}
     type SegmentConfiguration = {prefix?: OuterJoiner; suffix?: OuterJoiner; chance?: number}
@@ -36,7 +36,7 @@ test('the revised TypeScript intersections and joiner types parse without evalua
     type OuterJoiner = string | {text: string; merge?: boolean}
     type InnerJoiner = string | {between: string; first?: string; last?: string}
     type Sample = CustomSample | ListSample
-    type ListSample = string[]
+    type ListSample = (string | null)[]
     type CustomSample = SegmentMetadata & SegmentConfiguration & {
       joiner?: InnerJoiner
       count?: number | {min: number; max: number}

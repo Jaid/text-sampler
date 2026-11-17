@@ -156,7 +156,6 @@ test('list sample validation rejects numbers, nested arrays and semantic objects
     [['A', 9]],
     [[{text: 'A'}]],
     [[['A', 'B']]],
-    [['A', null]],
   ]
   for (const sentence of invalid) {
     expect(() => validateSentence(sentence)).toThrow(/sentence\[0\]\[\d+\].*only strings/)

@@ -62,8 +62,9 @@ A `Sentence` is a readonly array of segments. Both custom-sample `items` and lis
 | Segment | Meaning |
 | --- | --- |
 | `'literal text'` | Emit exactly this string. |
+| `null` | Emit nothing; useful as an optional sample item. |
 | `{text: 'apple'}` | Emit text with optional metadata, configuration and an article hint. |
-| `['A', 'B']` | `ListSample`: choose exactly one string. |
+| `[null, 'A', 'B']` | `ListSample`: choose a string or an empty (`null`) choice. |
 | `{items: ['A', 'B']}` | `CustomSample`: sample nested segments, optionally choosing multiple. |
 | `{token: 'a'}` | Emit `a` or `an` based on the next emitted word. |
 | `{joiner: ' '}` | Emit a fallback separator when body content survives on both sides. |
@@ -89,10 +90,10 @@ Properties with defaults are optional in the public types. Explicit `undefined` 
 
 ```ts
 type Sample = CustomSample | ListSample
-type ListSample = ReadonlyArray<string>
+type ListSample = ReadonlyArray<string | null>
 ```
 
-A `ListSample` is a complete segment: it selects **exactly one** string from a nonempty list. It is equivalent to a custom sample with just `items`, but it has no configuration or name:
+A `ListSample` is a complete segment: it selects **exactly one** entry from a nonempty list. Entries may be strings or `null`; a selected `null` emits nothing. It is equivalent to a custom sample with just `items`, but it has no configuration or name:
 
 ```ts
 const sentence = [
@@ -105,7 +106,7 @@ const result = generateSentence(sentence, 42)
 // The selected subject has an original index ID such as [2, 1].
 ```
 
-The outer array is always the sentence. `['A', 'B']` emits `AB`; `[['A', 'B']]` samples one of the two strings. `ListSample` entries must be **strings only**—not objects, numbers, or nested arrays. Use `CustomSample` for options such as `count`, `chance`, `prefix`, `suffix`, `joiner`, or `name`, or to sample arbitrary nested segments.
+The outer array is always the sentence. `['A', 'B']` emits `AB`; `[['A', 'B']]` samples one of the two strings. In particular, `[[null, 'hello']]` yields either `''` or `'hello'` with equal probability; `[null, 'hello']` alone is a sentence that always emits `'hello'`. `null` is weighted like any other item, not removed before sampling. `ListSample` entries must be strings or `null`—not objects, numbers, or nested arrays. Use `CustomSample` for options such as `count`, `chance`, `prefix`, `suffix`, `joiner`, or `name`, or to sample arbitrary nested segments.
 
 ### Custom samples and counts
 
@@ -118,11 +119,11 @@ const sample = {
 }
 ```
 
-`CustomSample.count` is a nonnegative integer or an inclusive `{min, max}` range. A custom sample chooses distinct **positions** in random order. If two positions contain equal strings, both can be chosen. Nested custom and list samples are allowed as items. A list sample always selects one position.
+`CustomSample.count` is a nonnegative integer or an inclusive `{min, max}` range. A custom sample chooses distinct **positions** in random order. If two positions contain equal strings, both can be chosen. Nested custom and list samples are allowed as items. A list sample always selects one position, including `null` entries.
 
 The maximum count must not exceed `items.length`. To represent an empty pool, use `{items: [], count: 0}` rather than an empty `ListSample`. A fixed count of zero emits nothing, including no prefix or suffix.
 
-Inner joiners are inserted only between surviving child outputs. A string supplies every gap. For an object joiner, `first` replaces the first gap and `last` replaces the final gap; `last` takes precedence when there are exactly two outputs. Empty outputs do not leave stray inner separators.
+Inner joiners are inserted only between surviving child outputs; a selected `null` adds no joiner or sample affixes. A string supplies every gap. For an object joiner, `first` replaces the first gap and `last` replaces the final gap; `last` takes precedence when there are exactly two outputs. Empty outputs do not leave stray inner separators.
 
 ### Inclusion chance
 
@@ -136,7 +137,7 @@ const sentence = [
 
 `chance` is a finite percentage from `0` to `100` on configurable semantic segments (including `CustomSample`), including fractional values. A failed chance omits the whole segment and its affixes. A skipped sample does not roll any of its children.
 
-Chance is evaluated before a segment's count and choices. The endpoints `0` and `100` do not consume random draws. Selected children that fail their own chance are not replaced with other items; a sample's count describes selected positions, not a guaranteed number of emitted outputs.
+A list sample containing `[null, 'hello']` behaves roughly like `{text: 'hello', chance: 50}`. Both emit `'hello'` about half the time, but they consume the random stream differently and need not agree for the same seed. Chance is evaluated before a segment's count and choices. The endpoints `0` and `100` do not consume random draws. Selected children that fail their own chance are not replaced with other items; a sample's count describes selected positions, not a guaranteed number of emitted outputs.
 
 The random stream follows sentence order and selected child order. Editing an earlier random choice can change later choices for the same seed. Segment names are metadata and do not influence randomness.
 
@@ -216,7 +217,7 @@ The English heuristic handles common silent consonants, vowel sounds and initial
 
 ### Segment IDs and names
 
-IDs are zero-based arrays of **original input indices**, never positions in the randomized output. A top-level literal uses `[0]`; an item at index `3` inside the sample at index `2` uses `[2, 3]`. Deeper nesting adds indices. A `ListSample` at `[2]` emits its chosen string with an ID such as `[2, 1]`, while its selection diagnostics use `[2]`.
+IDs are zero-based arrays of **original input indices**, never positions in the randomized output. A top-level literal uses `[0]`; an item at index `3` inside the sample at index `2` uses `[2, 3]`. Deeper nesting adds indices. A `ListSample` at `[2]` emits its chosen string with an ID such as `[2, 1]`, while its selection diagnostics use `[2]`. A selected `null` has no output fragment; the sample selection still reports `count: 1` and `items: ['']`.
 
 ```ts
 const result = generateSentence([
@@ -282,7 +283,7 @@ Type aliases are skipped as balanced syntax, not type-checked. Functions, calls,
 
 ## Validation
 
-Generation validates the complete input, including unselected and chance-skipped branches. Unknown properties, mixed segment shapes, invalid counts or chances, empty or non-string list samples, sparse arrays and circular samples are rejected with a source path. Shared non-circular subtrees are valid.
+Generation validates the complete input, including unselected and chance-skipped branches. `null` is allowed as a segment (including inside both sample kinds), but it is not allowed as a configuration value such as `chance` or `count`. Unknown properties, mixed segment shapes, invalid counts or chances, empty list samples, list entries other than strings or `null`, sparse arrays and circular samples are rejected with a source path. Shared non-circular subtrees are valid.
 
 Validation permits at most 10 000 segment occurrences and 64 nested sample levels. The parser additionally limits input to 1 000 000 characters and 100 000 tokens. These limits apply without rewriting the supplied data.
 

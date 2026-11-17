@@ -125,12 +125,12 @@ function checkSegment(value: unknown, path: string, depth: number, state: Valida
   if (depth > MAX_DEPTH) {
     fail(`Nesting cannot exceed ${MAX_DEPTH} levels.`, path)
   }
-  if (typeof value === 'string') {
+  if (value === null || typeof value === 'string') {
     return
   }
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      fail('List samples require at least one string.', path)
+      fail('List samples require at least one entry.', path)
     }
     for (const key of Object.keys(value)) {
       if (!/^(?:0|[1-9]\d*)$/.test(key)) {
@@ -140,10 +140,10 @@ function checkSegment(value: unknown, path: string, depth: number, state: Valida
     for (let index = 0; index < value.length; index++) {
       const itemPath = `${path}[${index}]`
       if (!Object.hasOwn(value, index)) {
-        fail('Sparse arrays are not supported; provide a string at every index.', itemPath)
+        fail('Sparse arrays are not supported; provide a choice at every index.', itemPath)
       }
-      if (typeof value[index] !== 'string') {
-        fail('List samples contain only strings; use { items } to sample segments.', itemPath)
+      if (value[index] !== null && typeof value[index] !== 'string') {
+        fail('List samples contain only strings or null; use { items } to sample segments.', itemPath)
       }
       checkSegment(value[index], itemPath, depth + 1, state)
     }

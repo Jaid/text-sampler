@@ -54,12 +54,12 @@ export interface CustomSample extends SegmentConfiguration, SegmentMetadata {
 }
 
 /**
- * A shorthand sample that chooses one string from the list.
+ * A shorthand sample that chooses one string or an empty choice from the list.
  */
-export type ListSample = ReadonlyArray<string>
+export type ListSample = ReadonlyArray<string | null>
 
 /**
- * A configurable sample or a shorthand string list.
+ * A configurable sample or a shorthand list of strings and empty choices.
  */
 export type Sample = CustomSample | ListSample
 
@@ -84,7 +84,7 @@ export interface JoinSegment extends SegmentConfiguration, SegmentMetadata {
 
 export type SemanticSegment = IndefiniteArticle | JoinSegment | Sample | TextSegment
 
-export type Segment = SemanticSegment | string
+export type Segment = SemanticSegment | string | null
 export type Sentence = ReadonlyArray<Segment>
 
 export interface SegmentReference {
