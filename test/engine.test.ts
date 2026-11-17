@@ -27,18 +27,19 @@ test('the revised TypeScript intersections and joiner types parse without evalua
   const sentence = parseSource(`
     type Sentence = Segment[]
     type Segment = string | SemanticSegment
-    type SemanticSegment = SegmentMetadata & SegmentConfiguration & (Sample | IndefiniteArticle | TextSegment | JoinSegment)
+    type SemanticSegment = Sample | (SegmentMetadata & SegmentConfiguration & (IndefiniteArticle | TextSegment | JoinSegment))
     type SegmentMetadata = {name?: string}
-    type SegmentConfiguration = {prefix?: OuterJoiner; suffix?: OuterJoiner; chance: number}
+    type SegmentConfiguration = {prefix?: OuterJoiner; suffix?: OuterJoiner; chance?: number}
     type IndefiniteArticle = {token: 'a'}
     type TextSegment = {text: string; an?: boolean}
     type JoinSegment = {joiner: string}
     type OuterJoiner = string | {text: string; merge?: boolean}
     type InnerJoiner = string | {between: string; first?: string; last?: string}
-    type Sample = {
+    type Sample = CustomSample | ListSample
+    type ListSample = string[]
+    type CustomSample = SegmentMetadata & SegmentConfiguration & {
       joiner?: InnerJoiner
-      /** @default 1 */
-      count: number | {min: number; max: number}
+      count?: number | {min: number; max: number}
       items: Segment[]
     }
     const sentence: Sentence = [

@@ -38,7 +38,7 @@ console.log(result.fragments)
 
 The same sentence and seed produce the same complete result. Change the seed to reroll. Inputs are never modified, so the same readonly or frozen sentence can be reused.
 
-The full art prompt from the playground is in [examples/gallery.ts](https://github.com/Jaid/text-sampler/blob/main/examples/gallery.ts).
+The full art prompt from the playground is in [examples/gallery.ts](https://github.com/Jaid/text-sampler/blob/main/examples/gallery.ts). A minimal shorthand example is in [examples/list.ts](https://github.com/Jaid/text-sampler/blob/main/examples/list.ts).
 
 ## API
 
@@ -53,36 +53,61 @@ The full art prompt from the playground is in [examples/gallery.ts](https://gith
 
 Seeds are required integers from `0` to `4294967295`, inclusive. An invalid seed throws `RangeError`. Each generation uses its own random state; calls do not affect one another and do not use `Math.random()`.
 
-The root also exports the input and result types, including `Sentence`, `Segment`, `SemanticSegment`, `Sample`, `TextSegment`, `IndefiniteArticle`, `JoinSegment`, `SegmentMetadata`, `SegmentConfiguration`, `InnerJoiner`, `OuterJoiner` and `GenerationResult`.
+The root also exports the input and result types, including `Sentence`, `Segment`, `SemanticSegment`, `Sample`, `CustomSample`, `ListSample`, `TextSegment`, `IndefiniteArticle`, `JoinSegment`, `SegmentMetadata`, `SegmentConfiguration`, `InnerJoiner`, `OuterJoiner` and `GenerationResult`.
 
 ## Sentence data
 
-A `Sentence` is a readonly array of segments. Sample `items` are readonly arrays too, so plain arrays and `as const satisfies Sentence` both work.
+A `Sentence` is a readonly array of segments. Both custom-sample `items` and list samples accept readonly arrays, so plain arrays and `as const satisfies Sentence` both work.
 
 | Segment | Meaning |
 | --- | --- |
 | `'literal text'` | Emit exactly this string. |
 | `{text: 'apple'}` | Emit text with optional metadata, configuration and an article hint. |
-| `{items: ['A', 'B']}` | Sample nested segments without replacement. |
+| `['A', 'B']` | `ListSample`: choose exactly one string. |
+| `{items: ['A', 'B']}` | `CustomSample`: sample nested segments, optionally choosing multiple. |
 | `{token: 'a'}` | Emit `a` or `an` based on the next emitted word. |
 | `{joiner: ' '}` | Emit a fallback separator when body content survives on both sides. |
 
-Every object segment accepts `name`, `prefix`, `suffix` and `chance`. A primitive string is always literal; wrap it in `{text: '…'}` to attach these properties.
+Every configurable object segment accepts `name`, `prefix`, `suffix` and `chance`. A primitive string is always literal; wrap it in `{text: '…'}` to attach these properties. A `ListSample` is a bare array of strings without configuration.
 
 ### Defaults
 
 | Property | Default |
 | --- | --- |
-| `Sample.count` | `1` |
-| `Sample.joiner` | `{between: ', ', last: ' and '}` |
+| `CustomSample.count` | `1` |
+| `CustomSample.joiner` | `{between: ', ', last: ' and '}` |
 | `SegmentConfiguration.chance` | `100` |
 | `prefix` and `suffix` | No affix. |
 | `OuterJoiner.merge` | `true` |
 | `TextSegment.an` | Infer the article from the emitted word. |
 
-Properties with defaults are optional in the public types. Explicit `undefined` is treated as omission for optional properties. `null` is invalid. `SegmentConfiguration` applies to every semantic segment, including articles, text and fallback joiners.
+Properties with defaults are optional in the public types. Explicit `undefined` is treated as omission for optional properties. `null` is invalid. `SegmentConfiguration` applies to all object-style semantic segments, including custom samples, articles, text and fallback joiners. List samples have no configuration.
 
-### Samples and counts
+### List samples
+
+`Sample` is the union of a configurable `CustomSample` and a shorthand `ListSample`:
+
+```ts
+type Sample = CustomSample | ListSample
+type ListSample = ReadonlyArray<string>
+```
+
+A `ListSample` is a complete segment: it selects **exactly one** string from a nonempty list. It is equivalent to a custom sample with just `items`, but it has no configuration or name:
+
+```ts
+const sentence = [
+  'Paint ',
+  {token: 'a', suffix: ' '},
+  ['oil painting', 'abstract landscape'],
+] as const satisfies Sentence
+
+const result = generateSentence(sentence, 42)
+// The selected subject has an original index ID such as [2, 1].
+```
+
+The outer array is always the sentence. `['A', 'B']` emits `AB`; `[['A', 'B']]` samples one of the two strings. `ListSample` entries must be **strings only**—not objects, numbers, or nested arrays. Use `CustomSample` for options such as `count`, `chance`, `prefix`, `suffix`, `joiner`, or `name`, or to sample arbitrary nested segments.
+
+### Custom samples and counts
 
 ```ts
 const sample = {
@@ -93,9 +118,9 @@ const sample = {
 }
 ```
 
-`count` is a nonnegative integer or an inclusive `{min, max}` range. A sample chooses distinct **positions** in random order. If two positions contain equal strings, both can be chosen. Nested samples are allowed.
+`CustomSample.count` is a nonnegative integer or an inclusive `{min, max}` range. A custom sample chooses distinct **positions** in random order. If two positions contain equal strings, both can be chosen. Nested custom and list samples are allowed as items. A list sample always selects one position.
 
-The maximum count must not exceed `items.length`. To represent an empty pool, use `{items: [], count: 0}`. A fixed count of zero emits nothing, including no prefix or suffix.
+The maximum count must not exceed `items.length`. To represent an empty pool, use `{items: [], count: 0}` rather than an empty `ListSample`. A fixed count of zero emits nothing, including no prefix or suffix.
 
 Inner joiners are inserted only between surviving child outputs. A string supplies every gap. For an object joiner, `first` replaces the first gap and `last` replaces the final gap; `last` takes precedence when there are exactly two outputs. Empty outputs do not leave stray inner separators.
 
@@ -109,7 +134,7 @@ const sentence = [
 ] satisfies Sentence
 ```
 
-`chance` is a finite percentage from `0` to `100`, including fractional values. A failed chance omits the whole segment and its affixes. A skipped sample does not roll any of its children.
+`chance` is a finite percentage from `0` to `100` on configurable semantic segments (including `CustomSample`), including fractional values. A failed chance omits the whole segment and its affixes. A skipped sample does not roll any of its children.
 
 Chance is evaluated before a segment's count and choices. The endpoints `0` and `100` do not consume random draws. Selected children that fail their own chance are not replaced with other items; a sample's count describes selected positions, not a guaranteed number of emitted outputs.
 
@@ -191,7 +216,7 @@ The English heuristic handles common silent consonants, vowel sounds and initial
 
 ### Segment IDs and names
 
-IDs are zero-based arrays of **original input indices**, never positions in the randomized output. A top-level literal uses `[0]`; an item at index `3` inside the sample at index `2` uses `[2, 3]`. Deeper nesting adds indices.
+IDs are zero-based arrays of **original input indices**, never positions in the randomized output. A top-level literal uses `[0]`; an item at index `3` inside the sample at index `2` uses `[2, 3]`. Deeper nesting adds indices. A `ListSample` at `[2]` emits its chosen string with an ID such as `[2, 1]`, while its selection diagnostics use `[2]`.
 
 ```ts
 const result = generateSentence([
@@ -249,7 +274,7 @@ try {
 }
 ```
 
-Supported input includes JSON, single-quoted strings, unquoted object keys, comments, trailing commas and a `const sentence = […]` declaration. A declaration may include a type annotation, preceding non-generic type aliases, `as const`, `as Sentence` and `satisfies Sentence`. An outer Markdown code fence is accepted.
+Supported input includes nested list samples, JSON, single-quoted strings, unquoted object keys, comments, trailing commas and a `const sentence = […]` declaration. A declaration may include a type annotation, preceding non-generic type aliases, `as const`, `as Sentence` and `satisfies Sentence`. An outer Markdown code fence is accepted.
 
 Type aliases are skipped as balanced syntax, not type-checked. Functions, calls, expressions, interpolation, spreads, imports and additional statements are rejected. The parser does not use `eval` or `Function`.
 
@@ -257,7 +282,7 @@ Type aliases are skipped as balanced syntax, not type-checked. Functions, calls,
 
 ## Validation
 
-Generation validates the complete input, including unselected and chance-skipped branches. Unknown properties, mixed segment shapes, invalid counts or chances, sparse arrays and circular samples are rejected with a source path. Shared non-circular subtrees are valid.
+Generation validates the complete input, including unselected and chance-skipped branches. Unknown properties, mixed segment shapes, invalid counts or chances, empty or non-string list samples, sparse arrays and circular samples are rejected with a source path. Shared non-circular subtrees are valid.
 
 Validation permits at most 10 000 segment occurrences and 64 nested sample levels. The parser additionally limits input to 1 000 000 characters and 100 000 tokens. These limits apply without rewriting the supplied data.
 

@@ -1,12 +1,13 @@
 import type {
   ArticleResolution,
+  CustomSample,
   Fragment,
   FragmentSource,
   GenerationResult,
   IndefiniteArticle,
   JoinSegment,
+  ListSample,
   OuterJoiner,
-  Sample,
   SampleSelection,
   Segment,
   SegmentConfiguration,
@@ -49,7 +50,7 @@ interface SampleNode extends Identity {
   readonly children: ReadonlyArray<RealizedNode | null>
   readonly kind: 'sample'
   readonly pending: PendingSelection
-  readonly segment: Sample
+  readonly segment: CustomSample
 }
 
 type LeafNode = ArticleNode | ConditionalJoinerNode | LiteralNode | TextNode
@@ -110,6 +111,10 @@ export function generateSentence(sentence: Sentence, seed: number): GenerationRe
       }
       leaves.push(node)
       return node
+    }
+    // List samples share the exact sampling path, but carry no configuration.
+    if (isListSample(segment)) {
+      segment = {items: segment}
     }
     const source = identity(path, id, ancestors, segment.name)
     const chance = segment.chance ?? 100
@@ -361,6 +366,9 @@ export function generateSentence(sentence: Sentence, seed: number): GenerationRe
     articleResolutions,
     fragments,
   }
+}
+function isListSample(segment: Segment): segment is ListSample {
+  return Array.isArray(segment)
 }
 function identity(path: string, id: SegmentId, ancestors: ReadonlyArray<SegmentReference>, name?: string): Identity {
   return {

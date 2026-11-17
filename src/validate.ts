@@ -128,6 +128,27 @@ function checkSegment(value: unknown, path: string, depth: number, state: Valida
   if (typeof value === 'string') {
     return
   }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      fail('List samples require at least one string.', path)
+    }
+    for (const key of Object.keys(value)) {
+      if (!/^(?:0|[1-9]\d*)$/.test(key)) {
+        fail('List samples cannot have configuration; use { items } instead.', `${path}.${key}`)
+      }
+    }
+    for (let index = 0; index < value.length; index++) {
+      const itemPath = `${path}[${index}]`
+      if (!Object.hasOwn(value, index)) {
+        fail('Sparse arrays are not supported; provide a string at every index.', itemPath)
+      }
+      if (typeof value[index] !== 'string') {
+        fail('List samples contain only strings; use { items } to sample segments.', itemPath)
+      }
+      checkSegment(value[index], itemPath, depth + 1, state)
+    }
+    return
+  }
   if (!isRecord(value)) {
     fail('Expected text, a sample, an article token, or a joiner.', path)
   }

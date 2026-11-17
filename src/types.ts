@@ -37,7 +37,10 @@ export type SampleCount = {
   readonly min: number
 } | number
 
-export interface Sample extends SegmentConfiguration, SegmentMetadata {
+/**
+ * A configurable sample of nested segments.
+ */
+export interface CustomSample extends SegmentConfiguration, SegmentMetadata {
   /**
    * Samples distinct item positions in random order.
    * @default 1
@@ -49,6 +52,16 @@ export interface Sample extends SegmentConfiguration, SegmentMetadata {
    */
   readonly joiner?: InnerJoiner | undefined
 }
+
+/**
+ * A shorthand sample that chooses one string from the list.
+ */
+export type ListSample = ReadonlyArray<string>
+
+/**
+ * A configurable sample or a shorthand string list.
+ */
+export type Sample = CustomSample | ListSample
 
 export interface IndefiniteArticle extends SegmentConfiguration, SegmentMetadata {
   readonly token: 'a'
