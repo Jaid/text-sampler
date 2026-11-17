@@ -1,27 +1,25 @@
 import {expect, test} from 'bun:test'
 
-import {generateSentence as generateValidatedSentence, validateSentence} from '#src/main.ts'
+import {validateSentence} from '#src/main.ts'
 import {parseSource} from '#src/parser.ts'
 
-import gallery from '../examples/gallery.ts'
+import {goldenSentence} from './fixtures/golden.ts'
 import {EXAMPLES, TYPE_DEFINITIONS} from './fixtures/playground.ts'
-import {must} from './helpers.ts'
+import {createSampler, must} from './helpers.ts'
 
-const DEFAULT_SOURCE = `const sentence = ${JSON.stringify(gallery)}`
-// Dynamic validation fixtures deliberately start as unknown data.
-const generateSentence = (sentence: unknown, seed: number) => generateValidatedSentence(validateSentence(sentence), seed)
+const DEFAULT_SOURCE = `const sentence = ${JSON.stringify(goldenSentence)}`
 test('every playground example and the complete current schema generate successfully', () => {
   for (const example of EXAMPLES) {
     const sentence = parseSource(example.source)
     for (const seed of [0, 1, 42, 1337, 10_000, 4_294_967_295]) {
-      const result = generateSentence(sentence, seed)
+      const result = createSampler(validateSentence(sentence), seed).trace()
       expect(result.text.length > 0).toBeTruthy()
-      expect(result).toEqual(generateSentence(sentence, seed))
+      expect(result).toEqual(createSampler(validateSentence(sentence), seed).trace())
     }
   }
   const sentence = parseSource(`${TYPE_DEFINITIONS}\n\n${DEFAULT_SOURCE}`)
-  expect(sentence.length).toBe(gallery.length)
-  expect(generateSentence(sentence, 42).text).toMatch(/^Please /)
+  expect(sentence.length).toBe(goldenSentence.length)
+  expect(createSampler(validateSentence(sentence), 42).trace().text).toMatch(/^Paint /)
 })
 test('the revised TypeScript intersections and joiner types parse without evaluating types', () => {
   const sentence = parseSource(`
@@ -52,8 +50,8 @@ test('the revised TypeScript intersections and joiner types parse without evalua
     ] as const satisfies Sentence;
   `)
   expect(sentence.length).toBe(6)
-  expect(must(generateSentence(sentence, 42).selections[0]).count).toBe(1)
-  expect(generateSentence(sentence, 42).text).toMatch(/^Please (change|remake|restyle) to (a|an) /)
+  expect(must(createSampler(validateSentence(sentence), 42).trace().selections[0]).count).toBe(1)
+  expect(createSampler(validateSentence(sentence), 42).trace().text).toMatch(/^Please (change|remake|restyle) to (a|an) /)
 })
 test('same source and seed repeat exactly; sampling is unique and random in order', () => {
   const sentence = [{
@@ -61,18 +59,18 @@ test('same source and seed repeat exactly; sampling is unique and random in orde
     items: ['A', 'B', 'C', 'D', 'E'],
     count: 3,
   }]
-  const first = generateSentence(sentence, 123)
+  const first = createSampler(validateSentence(sentence), 123).trace()
   expect(must(first.selections[0]).items).toEqual(['D', 'B', 'A'])
-  expect(first).toEqual(generateSentence(sentence, 123))
+  expect(first).toEqual(createSampler(validateSentence(sentence), 123).trace())
   const selectedItems = new Set(must(first.selections[0]).items)
   expect(selectedItems.size).toBe(3)
-  const outputs = new Set(Array.from({length: 20}, (_, seed) => generateSentence(sentence, seed).text))
+  const outputs = new Set(Array.from({length: 20}, (_, seed) => createSampler(validateSentence(sentence), seed).trace().text))
   expect(outputs.size > 10).toBeTruthy()
   const ordered = [{
     items: ['A', 'B', 'C'],
     count: 3,
   }]
-  const permutations = new Set(Array.from({length: 20}, (_, seed) => generateSentence(ordered, seed).text))
+  const permutations = new Set(Array.from({length: 20}, (_, seed) => createSampler(validateSentence(ordered), seed).trace().text))
   expect(permutations.size > 1).toBeTruthy()
 })
 test('count range is inclusive and zero emits no affixes', () => {
@@ -88,7 +86,7 @@ test('count range is inclusive and zero emits no affixes', () => {
   }, 'after']
   const seen = new Set<number>
   for (let seed = 0; seed < 100; seed++) {
-    const result = generateSentence(sentence, seed)
+    const result = createSampler(validateSentence(sentence), seed).trace()
     const count = must(result.selections[0]).count
     seen.add(count)
     if (!count) {
@@ -109,16 +107,16 @@ test('empty nested choices do not leave affixes or separators', () => {
       items: ['hidden'],
     }],
   }, 'Y']
-  const result = generateSentence(sentence, 5)
+  const result = createSampler(validateSentence(sentence), 5).trace()
   expect(result.text).toBe('XY')
   expect(must(result.selections[0]).count).toBe(2)
   expect(must(result.selections[1]).count).toBe(0)
 })
 test('default and custom first/last joiner boundaries behave predictably', () => {
-  const defaultResult = generateSentence([{
+  const defaultResult = createSampler(validateSentence([{
     items: ['A', 'B', 'C'],
     count: 3,
-  }], 2)
+  }]), 2).trace()
   const [a, b, c] = must(defaultResult.selections[0]).items
   expect(defaultResult.text).toBe(`${a}, ${b} and ${c}`)
   const joiner = {
@@ -126,53 +124,53 @@ test('default and custom first/last joiner boundaries behave predictably', () =>
     first: '~',
     last: '&',
   }
-  const four = generateSentence([{
+  const four = createSampler(validateSentence([{
     items: ['A', 'B', 'C', 'D'],
     count: 4,
     joiner,
-  }], 0)
+  }]), 0).trace()
   const values = must(four.selections[0]).items
   expect(four.text).toBe(`${values[0]}~${values[1]}|${values[2]}&${values[3]}`)
-  const two = generateSentence([{
+  const two = createSampler(validateSentence([{
     items: ['A', 'B'],
     count: 2,
     joiner,
-  }], 0)
+  }]), 0).trace()
   expect(two.text).toBe(must(two.selections[0]).items.join('&'))
 })
 test('article follows emitted words across skipped samples and respects explicit phonetics', () => {
   const article = {token: 'a'}
   for (const [text, expected] of [['apple', 'an'], ['hour', 'an'], ['honest rendering', 'an'], ['university', 'a'], ['unique painting', 'a'], ['one-off', 'a'], ['MRI scan', 'an'], ['NASA project', 'a'], ['URL', 'a']]) {
-    expect(generateSentence([article, ' ', {
+    expect(createSampler(validateSentence([article, ' ', {
       count: 0,
       items: ['hidden'],
-    }, text], 0).text).toBe(`${expected} ${text}`)
+    }, text]), 0).trace().text).toBe(`${expected} ${text}`)
   }
-  expect(generateSentence([article, ' ', {
+  expect(createSampler(validateSentence([article, ' ', {
     text: 'university',
     an: true,
-  }], 0).text).toBe('an university')
-  expect(generateSentence([article, ' ', {items: [{
+  }]), 0).trace().text).toBe('an university')
+  expect(createSampler(validateSentence([article, ' ', {items: [{
     text: 'apple',
     an: false,
-  }]}], 0).text).toBe('a apple')
-  expect(generateSentence([article, ' (', {
+  }]}]), 0).trace().text).toBe('a apple')
+  expect(createSampler(validateSentence([article, ' (', {
     text: 'hour',
     an: false,
-  }, ')'], 0).text).toBe('a (hour)')
-  expect(generateSentence([article, ' ', 'ho', 'ur'], 0).text).toBe('an hour')
+  }, ')']), 0).trace().text).toBe('a (hour)')
+  expect(createSampler(validateSentence([article, ' ', 'ho', 'ur']), 0).trace().text).toBe('an hour')
 })
 test('literal whitespace is exact, including leading, repeated, and trailing whitespace', () => {
   const source = ['  ', {token: 'a'}, '  ', 'apple', '\n']
-  const result = generateSentence(source, 0)
+  const result = createSampler(validateSentence(source), 0).trace()
   expect(result.text).toBe('  an  apple\n')
   expect('rawText' in result).toBe(false)
-  expect(generateSentence(['A ', ' B\t', {text: '\n C'}], 0).text).toBe('A  B\t\n C')
-  expect(generateSentence([{
+  expect(createSampler(validateSentence(['A ', ' B\t', {text: '\n C'}]), 0).trace().text).toBe('A  B\t\n C')
+  expect(createSampler(validateSentence([{
     items: ['  '],
     prefix: '[',
     suffix: ']',
-  }], 0).text).toBe('[  ]')
+  }]), 0).trace().text).toBe('[  ]')
 })
 test('equal adjacent outer joiners merge unless both sides explicitly disable merging', () => {
   for (const left of [true, false]) {
@@ -193,7 +191,7 @@ test('equal adjacent outer joiners merge unless both sides explicitly disable me
           },
         },
       ]
-      expect(generateSentence(sentence, 0).text).toBe(!left && !right ? 'A /  / B' : 'A / B')
+      expect(createSampler(validateSentence(sentence), 0).trace().text).toBe(!left && !right ? 'A /  / B' : 'A / B')
     }
   }
 })
@@ -220,57 +218,57 @@ test('string affixes and object affixes default to merging in either position', 
       merge: false,
     }, {text: ' '}],
   ]) {
-    expect(generateSentence([{
+    expect(createSampler(validateSentence([{
       items: ['A'],
       suffix,
     }, {
       items: ['B'],
       prefix,
-    }], 0).text).toBe('A B')
+    }]), 0).trace().text).toBe('A B')
   }
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     items: ['A'],
     suffix: '\n\t',
   }, {
     items: ['B'],
     prefix: '\n\t',
-  }], 0).text).toBe('A\n\tB')
+  }]), 0).trace().text).toBe('A\n\tB')
 })
 test('unequal affixes and nonempty literal boundaries never merge', () => {
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     items: ['A'],
     suffix: ' ',
   }, {
     items: ['B'],
     prefix: '  ',
-  }], 0).text).toBe('A   B')
-  expect(generateSentence([{
+  }]), 0).trace().text).toBe('A   B')
+  expect(createSampler(validateSentence([{
     items: ['A'],
     suffix: ' | ',
   }, {
     items: ['B'],
     prefix: ' + ',
-  }], 0).text).toBe('A |  + B')
+  }]), 0).trace().text).toBe('A |  + B')
   for (const barrier of [' ', {
     text: ' ',
     name: 'literal',
   }, '\n', 'X']) {
-    expect(generateSentence([{
+    expect(createSampler(validateSentence([{
       items: ['A'],
       suffix: ' ',
     }, barrier, {
       items: ['B'],
       prefix: ' ',
-    }], 0).text).toBe(`A ${typeof barrier === 'string' ? barrier : barrier.text} B`)
+    }]), 0).trace().text).toBe(`A ${typeof barrier === 'string' ? barrier : barrier.text} B`)
   }
-  expect(generateSentence(['A ', {
+  expect(createSampler(validateSentence(['A ', {
     items: ['B'],
     prefix: ' ',
-  }], 0).text).toBe('A  B')
-  expect(generateSentence([{
+  }]), 0).trace().text).toBe('A  B')
+  expect(createSampler(validateSentence([{
     items: ['A'],
     suffix: ' ',
-  }, ' B'], 0).text).toBe('A  B')
+  }, ' B']), 0).trace().text).toBe('A  B')
 })
 test('zero-count samples, empty samples, and empty literals expose the next emitted boundary', () => {
   const sentence = [
@@ -307,7 +305,7 @@ test('zero-count samples, empty samples, and empty literals expose the next emit
       prefix: ' ',
     },
   ]
-  expect(generateSentence(sentence, 0).text).toBe('A B')
+  expect(createSampler(validateSentence(sentence), 0).trace().text).toBe('A B')
 })
 test('nested exposed edges merge while same-direction wrapper affixes remain separate', () => {
   const exposed = [
@@ -329,21 +327,21 @@ test('nested exposed edges merge while same-direction wrapper affixes remain sep
       prefix: '',
     },
   ]
-  expect(generateSentence(exposed, 0).text).toBe('A B')
-  expect(generateSentence([{
+  expect(createSampler(validateSentence(exposed), 0).trace().text).toBe('A B')
+  expect(createSampler(validateSentence([{
     items: [{
       items: ['A'],
       prefix: ' ',
     }],
     prefix: ' ',
-  }], 0).text).toBe('  A')
-  expect(generateSentence([{
+  }]), 0).trace().text).toBe('  A')
+  expect(createSampler(validateSentence([{
     items: [{
       items: ['A'],
       suffix: ' ',
     }],
     suffix: ' ',
-  }], 0).text).toBe('A  ')
+  }]), 0).trace().text).toBe('A  ')
   const doubledWrappers = [
     {
       items: [{
@@ -360,7 +358,7 @@ test('nested exposed edges merge while same-direction wrapper affixes remain sep
       prefix: ' ',
     },
   ]
-  expect(generateSentence(doubledWrappers, 0).text).toBe('A   B')
+  expect(createSampler(validateSentence(doubledWrappers), 0).trace().text).toBe('A   B')
 })
 test('nested item boundaries can merge through an empty inner joiner but not an emitted one', () => {
   const children = [
@@ -375,16 +373,16 @@ test('nested item boundaries can merge through an empty inner joiner but not an 
       suffix: ' ',
     },
   ]
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     items: children,
     count: 2,
     joiner: '',
-  }], 0).text).toMatch(/^ [AB] [AB] $/)
-  expect(generateSentence([{
+  }]), 0).trace().text).toMatch(/^ [AB] [AB] $/)
+  expect(createSampler(validateSentence([{
     items: children,
     count: 2,
     joiner: ' ',
-  }], 0).text).toMatch(/^ [AB] {3}[AB] $/)
+  }]), 0).trace().text).toMatch(/^ [AB] {3}[AB] $/)
 })
 test('optional phonetic hints and semantic names survive validation and article resolution', () => {
   const sentence = [
@@ -406,22 +404,22 @@ test('optional phonetic hints and semantic names survive validation and article 
     },
   ]
   const original = JSON.stringify(sentence)
-  const result = generateSentence(sentence, 0)
+  const result = createSampler(validateSentence(sentence), 0).trace()
   expect(result.text).toBe('an hour')
   expect(must(result.articleResolutions[0]).name).toBe('indefinite article')
   expect(must(result.articleResolutions[0]).nextWord).toBe('hour')
   expect(JSON.stringify(sentence)).toBe(original)
-  expect(generateSentence([{token: 'a'}, ' ', {
+  expect(createSampler(validateSentence([{token: 'a'}, ' ', {
     name: 'noun',
     text: 'unique result',
-  }], 0).text).toBe('a unique result')
-  expect(generateSentence([{token: 'a'}, ' ', {
+  }]), 0).trace().text).toBe('a unique result')
+  expect(createSampler(validateSentence([{token: 'a'}, ' ', {
     text: 'hour',
     an: false,
-  }], 0).text).toBe('a hour')
+  }]), 0).trace().text).toBe('a hour')
 })
 test('article resolution reads the words formed after structural boundary merging', () => {
-  const result = generateSentence([
+  const result = createSampler(validateSentence([
     {token: 'a'},
     ' ',
     {
@@ -432,17 +430,17 @@ test('article resolution reads the words formed after structural boundary mergin
       items: ['nest'],
       prefix: 'o',
     },
-  ], 0)
+  ]), 0).trace()
   expect(result.text).toBe('an honest')
   expect(must(result.articleResolutions[0]).nextWord).toBe('honest')
 })
 test('text and article segments share configured prefixes and suffixes', () => {
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     name: 'greeting',
     text: 'hello',
     prefix: '[',
     suffix: {text: ']'},
-  }], 0).text).toBe('[hello]')
+  }]), 0).trace().text).toBe('[hello]')
   const sentence = [
     {
       name: 'article',
@@ -457,15 +455,15 @@ test('text and article segments share configured prefixes and suffixes', () => {
     },
   ]
   const original = JSON.stringify(sentence)
-  const result = generateSentence(sentence, 0)
+  const result = createSampler(validateSentence(sentence), 0).trace()
   expect(result.text).toBe('(an apple)')
   expect(must(result.articleResolutions[0]).name).toBe('article')
   expect(JSON.stringify(sentence)).toBe(original)
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     token: 'a',
     prefix: '[',
     suffix: ']',
-  }], 0).text).toBe('[a]')
+  }]), 0).trace().text).toBe('[a]')
 })
 test('adjacent semantic affixes merge across text, sample, and article kinds', () => {
   const cases = [
@@ -529,7 +527,7 @@ test('adjacent semantic affixes merge across text, sample, and article kinds', (
     }], 'an a'],
   ] as const
   for (const [sentence, expected] of cases) {
-    expect(generateSentence(sentence, 0).text).toBe(expected)
+    expect(createSampler(validateSentence(sentence), 0).trace().text).toBe(expected)
   }
   for (const suffixMerge of [true, false]) {
     for (const prefixMerge of [true, false]) {
@@ -549,17 +547,17 @@ test('adjacent semantic affixes merge across text, sample, and article kinds', (
           },
         },
       ]
-      expect(generateSentence(sentence, 0).text).toBe(suffixMerge || prefixMerge ? 'an hour' : 'an  hour')
+      expect(createSampler(validateSentence(sentence), 0).trace().text).toBe(suffixMerge || prefixMerge ? 'an hour' : 'an  hour')
     }
   }
 })
 test('empty configured text omits its affixes and exposes the next emitted boundary', () => {
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     text: '',
     prefix: '[',
     suffix: ']',
-  }], 0).text).toBe('')
-  expect(generateSentence([
+  }]), 0).trace().text).toBe('')
+  expect(createSampler(validateSentence([
     {
       text: 'A',
       suffix: ' ',
@@ -579,13 +577,13 @@ test('empty configured text omits its affixes and exposes the next emitted bound
       text: 'B',
       prefix: ' ',
     },
-  ], 0).text).toBe('A B')
-  expect(generateSentence([{
+  ]), 0).trace().text).toBe('A B')
+  expect(createSampler(validateSentence([{
     text: ' ',
     prefix: '[',
     suffix: ']',
-  }], 0).text).toBe('[ ]')
-  expect(generateSentence([{
+  }]), 0).trace().text).toBe('[ ]')
+  expect(createSampler(validateSentence([{
     items: [{
       text: '',
       prefix: '[',
@@ -593,10 +591,10 @@ test('empty configured text omits its affixes and exposes the next emitted bound
     }],
     prefix: '(',
     suffix: ')',
-  }], 0).text).toBe('')
+  }]), 0).trace().text).toBe('')
 })
 test('article lookahead includes configured prefix words before text phonetic hints', () => {
-  const bright = generateSentence([
+  const bright = createSampler(validateSentence([
     {
       token: 'a',
       suffix: ' ',
@@ -606,34 +604,34 @@ test('article lookahead includes configured prefix words before text phonetic hi
       an: true,
       prefix: 'bright ',
     },
-  ], 0)
+  ]), 0).trace()
   expect(bright.text).toBe('a bright hour')
   expect(must(bright.articleResolutions[0]).nextWord).toBe('bright')
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     token: 'a',
     suffix: ' ',
   }, {
     text: 'hour',
     prefix: ' ',
-  }], 0).text).toBe('an hour')
-  expect(generateSentence([{
+  }]), 0).trace().text).toBe('an hour')
+  expect(createSampler(validateSentence([{
     token: 'a',
     suffix: ' ',
   }, {
     text: 'hour',
     an: false,
     prefix: ' ',
-  }], 0).text).toBe('a hour')
-  expect(generateSentence([{
+  }]), 0).trace().text).toBe('a hour')
+  expect(createSampler(validateSentence([{
     token: 'a',
     suffix: ' bright ',
   }, {
     text: 'hour',
     an: true,
-  }], 0).text).toBe('a bright hour')
+  }]), 0).trace().text).toBe('a bright hour')
 })
 test('shared configuration composes with nested samples without folding same-direction affixes', () => {
-  expect(generateSentence([
+  expect(createSampler(validateSentence([
     {items: [{
       text: 'A',
       suffix: ' ',
@@ -642,21 +640,21 @@ test('shared configuration composes with nested samples without folding same-dir
       text: 'B',
       prefix: ' ',
     },
-  ], 0).text).toBe('A B')
-  expect(generateSentence([{
+  ]), 0).trace().text).toBe('A B')
+  expect(createSampler(validateSentence([{
     items: [{
       text: 'A',
       prefix: ' ',
     }],
     prefix: ' ',
-  }], 0).text).toBe('  A')
-  expect(generateSentence([{
+  }]), 0).trace().text).toBe('  A')
+  expect(createSampler(validateSentence([{
     items: [{
       text: 'A',
       suffix: ' ',
     }],
     suffix: ' ',
-  }], 0).text).toBe('A  ')
+  }]), 0).trace().text).toBe('A  ')
 })
 test('chance endpoints apply to every semantic kind without consuming random draws', () => {
   const pool = {
@@ -664,7 +662,7 @@ test('chance endpoints apply to every semantic kind without consuming random dra
     items: ['A', 'B', 'C', 'D'],
     count: 2,
   }
-  const baseline = must(generateSentence([pool], 123).selections[0]).items
+  const baseline = must(createSampler(validateSentence([pool]), 123).trace().selections[0]).items
   const skipped = [
     {
       text: 'hidden',
@@ -695,30 +693,30 @@ test('chance endpoints apply to every semantic kind without consuming random dra
     },
   ]
   for (const segment of skipped) {
-    const result = generateSentence([segment, pool], 123)
+    const result = createSampler(validateSentence([segment, pool]), 123).trace()
     expect(result.selections.find(value => value.name === 'pool')?.items).toEqual(baseline)
     expect(result.text.includes('[')).toBe(false)
   }
-  expect(must(generateSentence([{
+  expect(must(createSampler(validateSentence([{
     ...pool,
     chance: 100,
-  }], 123).selections[0]).items).toEqual(baseline)
-  expect(generateSentence([{
+  }]), 123).trace().selections[0]).items).toEqual(baseline)
+  expect(createSampler(validateSentence([{
     text: 'A',
     chance: 100,
   }, {
     joiner: ' ',
     chance: 100,
-  }, {text: 'B'}], 0).text).toBe('A B')
-  expect(generateSentence([{text: 'A'}, {
+  }, {text: 'B'}]), 0).trace().text).toBe('A B')
+  expect(createSampler(validateSentence([{text: 'A'}, {
     joiner: ' ',
     chance: 0,
-  }, {text: 'B'}], 0).text).toBe('AB')
-  expect(generateSentence([{
+  }, {text: 'B'}]), 0).trace().text).toBe('AB')
+  expect(createSampler(validateSentence([{
     token: 'a',
     chance: 0,
     suffix: ' ',
-  }, 'apple'], 0).text).toBe('apple')
+  }, 'apple']), 0).trace().text).toBe('apple')
 })
 test('intermediate chances repeat by seed and skipped parents do not roll children', () => {
   const source = [{
@@ -731,8 +729,8 @@ test('intermediate chances repeat by seed and skipped parents do not roll childr
   }]
   const outputs = new Set
   for (let seed = 0; seed < 40; seed++) {
-    const result = generateSentence(source, seed)
-    expect(result).toEqual(generateSentence(source, seed))
+    const result = createSampler(validateSentence(source), seed).trace()
+    expect(result).toEqual(createSampler(validateSentence(source), seed).trace())
     outputs.add(result.text)
   }
   expect(outputs.has('A')).toBeTruthy()
@@ -759,17 +757,17 @@ test('intermediate chances repeat by seed and skipped parents do not roll childr
       count: 2,
     },
   ]
-  const result = generateSentence(sourceWithChildren, 42)
+  const result = createSampler(validateSentence(sourceWithChildren), 42).trace()
   expect(must(result.selections[0]).skipReason).toBe('chance')
   expect(must(result.selections[0]).id).toEqual([0])
   expect(result.selections.some(value => value.name === 'child')).toBe(false)
-  expect(must(result.selections[1]).items).toEqual(must(generateSentence([sourceWithChildren[1]], 42).selections[0]).items)
-  expect(generateSentence([{
+  expect(must(result.selections[1]).items).toEqual(must(createSampler(validateSentence([sourceWithChildren[1]]), 42).trace().selections[0]).items)
+  expect(createSampler(validateSentence([{
     chance: 50,
     items: ['hidden'],
     prefix: '[',
     suffix: ']',
-  }], 42).text).toBe('')
+  }]), 42).trace().text).toBe('')
 })
 test('chance validates finite percentages and samples retain their inner joiner discriminator', () => {
   for (const chance of [-1, 101, Infinity, NaN, '50', null]) {
@@ -783,11 +781,11 @@ test('chance validates finite percentages and samples retain their inner joiner 
     chance: 0.25,
   }])).not.toThrow()
   expect(() => validateSentence([{joiner: {between: ' '}}])).toThrow(/sentence\[0\]\.joiner/)
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     items: ['A', 'B'],
     count: 2,
     joiner: '|',
-  }], 0).text.length).toBe(3)
+  }]), 0).trace().text.length).toBe(3)
 })
 test('fallback joiners require actual body content on both sides', () => {
   for (const source of [
@@ -799,24 +797,24 @@ test('fallback joiners require actual body content on both sides', () => {
       chance: 0,
     }],
   ]) {
-    expect(generateSentence(source, 0).text).toBe('A')
+    expect(createSampler(validateSentence(source), 0).trace().text).toBe('A')
   }
-  expect(generateSentence([{joiner: ' '}, {joiner: '-'}], 0).text).toBe('')
-  expect(generateSentence(['A', {joiner: ' / '}, 'B'], 0).text).toBe('A / B')
-  expect(generateSentence(['A', {joiner: ''}, 'B'], 0).text).toBe('AB')
-  expect(generateSentence(['A', {joiner: ' '}, ' ', {joiner: ' '}, 'B'], 0).text).toBe('A   B')
+  expect(createSampler(validateSentence([{joiner: ' '}, {joiner: '-'}]), 0).trace().text).toBe('')
+  expect(createSampler(validateSentence(['A', {joiner: ' / '}, 'B']), 0).trace().text).toBe('A / B')
+  expect(createSampler(validateSentence(['A', {joiner: ''}, 'B']), 0).trace().text).toBe('AB')
+  expect(createSampler(validateSentence(['A', {joiner: ' '}, ' ', {joiner: ' '}, 'B']), 0).trace().text).toBe('A   B')
 })
 test('fallback runs coalesce equal adjacent joiners after skips and retain different text', () => {
   const source = ['A', {joiner: ' '}, {
     text: 'hidden',
     chance: 0,
   }, '', {joiner: ' '}, 'B']
-  expect(generateSentence(source, 0).text).toBe('A B')
-  expect(generateSentence(['A', {joiner: ','}, {joiner: ';'}, 'B'], 0).text).toBe('A,;B')
-  expect(generateSentence(['A', {joiner: ' '}, {
+  expect(createSampler(validateSentence(source), 0).trace().text).toBe('A B')
+  expect(createSampler(validateSentence(['A', {joiner: ','}, {joiner: ';'}, 'B']), 0).trace().text).toBe('A,;B')
+  expect(createSampler(validateSentence(['A', {joiner: ' '}, {
     items: ['hidden'],
     count: 0,
-  }, {joiner: ' '}, 'B'], 0).text).toBe('A B')
+  }, {joiner: ' '}, 'B']), 0).trace().text).toBe('A B')
 })
 test('fallback absorption requires an identical facing affix with merge enabled', () => {
   for (const left of [true, false]) {
@@ -838,31 +836,31 @@ test('fallback absorption requires an identical facing affix with merge enabled'
           },
         },
       ]
-      expect(generateSentence(source, 0).text).toBe(left || right ? 'A B' : 'A   B')
+      expect(createSampler(validateSentence(source), 0).trace().text).toBe(left || right ? 'A B' : 'A   B')
     }
   }
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     text: 'A',
     suffix: {
       text: ' ',
       merge: false,
     },
-  }, {joiner: ' '}, 'B'], 0).text).toBe('A  B')
-  expect(generateSentence(['A', {joiner: ' '}, {
+  }, {joiner: ' '}, 'B']), 0).trace().text).toBe('A  B')
+  expect(createSampler(validateSentence(['A', {joiner: ' '}, {
     text: 'B',
     prefix: {
       text: ' ',
       merge: false,
     },
-  }], 0).text).toBe('A  B')
-  expect(generateSentence(['A ', {joiner: ' '}, 'B'], 0).text).toBe('A  B')
-  expect(generateSentence([{
+  }]), 0).trace().text).toBe('A  B')
+  expect(createSampler(validateSentence(['A ', {joiner: ' '}, 'B']), 0).trace().text).toBe('A  B')
+  expect(createSampler(validateSentence([{
     text: 'A',
     suffix: ' ',
   }, {joiner: ' - '}, {
     text: 'B',
     prefix: ' ',
-  }], 0).text).toBe('A  -  B')
+  }]), 0).trace().text).toBe('A  -  B')
 })
 test('configured joiners and join-only samples cannot anchor themselves', () => {
   const configuredJoin = {
@@ -870,22 +868,22 @@ test('configured joiners and join-only samples cannot anchor themselves', () => 
     prefix: '(',
     suffix: ')',
   }
-  expect(generateSentence([configuredJoin, 'B'], 0).text).toBe('B')
-  expect(generateSentence(['A', configuredJoin], 0).text).toBe('A')
-  expect(generateSentence(['A', configuredJoin, 'B'], 0).text).toBe('A( )B')
-  expect(generateSentence(['A', {
+  expect(createSampler(validateSentence([configuredJoin, 'B']), 0).trace().text).toBe('B')
+  expect(createSampler(validateSentence(['A', configuredJoin]), 0).trace().text).toBe('A')
+  expect(createSampler(validateSentence(['A', configuredJoin, 'B']), 0).trace().text).toBe('A( )B')
+  expect(createSampler(validateSentence(['A', {
     joiner: ' ',
     prefix: ' ',
     suffix: ' ',
-  }, 'B'], 0).text).toBe('A   B')
+  }, 'B']), 0).trace().text).toBe('A   B')
   const sample = {
     items: [{joiner: ' '}],
     prefix: '(',
     suffix: ')',
   }
-  expect(generateSentence([sample, 'B'], 0).text).toBe('B')
-  expect(generateSentence(['A', sample, 'B'], 0).text).toBe('A( )B')
-  expect(generateSentence([sample, {joiner: ' '}, sample], 0).text).toBe('')
+  expect(createSampler(validateSentence([sample, 'B']), 0).trace().text).toBe('B')
+  expect(createSampler(validateSentence(['A', sample, 'B']), 0).trace().text).toBe('A( )B')
+  expect(createSampler(validateSentence([sample, {joiner: ' '}, sample]), 0).trace().text).toBe('')
 })
 test('sample inner separators are inserted only between surviving conditional items', () => {
   const sample = {
@@ -894,15 +892,15 @@ test('sample inner separators are inserted only between surviving conditional it
     joiner: '|',
   }
   for (const seed of [0, 1, 2, 3, 42, 123]) {
-    expect(generateSentence([sample], seed).text).toBe('B')
+    expect(createSampler(validateSentence([sample]), seed).trace().text).toBe('B')
   }
-  expect(generateSentence([{
+  expect(createSampler(validateSentence([{
     items: [{joiner: ' '}, {joiner: '-'}],
     count: 2,
     joiner: '|',
     prefix: '[',
     suffix: ']',
-  }], 0).text).toBe('')
+  }]), 0).trace().text).toBe('')
 })
 test('provenance uses original indices through sampled order and nested named parents', () => {
   const source = ['Start ', {
@@ -928,7 +926,7 @@ test('provenance uses original indices through sampled order and nested named pa
       'C',
     ],
   }, ' end']
-  const result = generateSentence(source, 123)
+  const result = createSampler(validateSentence(source), 123).trace()
   expect(result.fragments.map(value => value.text).join('')).toBe(result.text)
   const a = must(result.fragments.find(value => value.text === 'A'))
   expect(a.id).toEqual([1, 0])
@@ -983,7 +981,7 @@ test('merged fragments retain fallback and affix contributor identities without 
       prefix: ' ',
     },
   ]
-  const result = generateSentence(source, 0)
+  const result = createSampler(validateSentence(source), 0).trace()
   expect(result.text).toBe('A B')
   expect(result.fragments.map(value => value.text).join('')).toBe(result.text)
   const boundary = must(result.fragments.find(value => value.text === ' '))
@@ -995,7 +993,7 @@ test('merged fragments retain fallback and affix contributor identities without 
   expect(result.fragments.some(value => value.name === 'optional')).toBe(false)
 })
 test('articles resolve after fallback absorption and expose their stable source identity', () => {
-  const result = generateSentence([
+  const result = createSampler(validateSentence([
     {
       name: 'article',
       token: 'a',
@@ -1010,7 +1008,7 @@ test('articles resolve after fallback absorption and expose their stable source 
       text: 'nest',
       prefix: 'o',
     },
-  ], 0)
+  ]), 0).trace()
   expect(result.text).toBe('an honest')
   expect(must(result.articleResolutions[0]).id).toEqual([0])
   expect(must(result.articleResolutions[0]).nextWord).toBe('honest')
@@ -1100,6 +1098,6 @@ test('invalid schemas and ranges report paths', () => {
   }])).toThrow(/count/i)
   expect(() => validateSentence([{token: 'b'}])).toThrow(/token/i)
   expect(() => parseSource('[{items: ["x"], count: 1, count: 0}]')).toThrow(/Duplicate property/)
-  expect(() => generateSentence(['x'], -1)).toThrow(/seed/i)
-  expect(() => generateSentence(['x'], 1.1)).toThrow(/seed/i)
+  expect(() => createSampler(validateSentence(['x']), -1).trace()).toThrow(/seed/i)
+  expect(() => createSampler(validateSentence(['x']), 1.1).trace()).toThrow(/seed/i)
 })

@@ -1,9 +1,10 @@
 # Inspecting output
 
-`generateSentence` returns:
+`textSampler.trace()` performs a generation run and returns:
 
 | Field | Meaning |
 | --- | --- |
+| `seed` | The exact seed used, including a numeric seed selected for an unseeded run. |
 | `text` | Exact generated text. |
 | `fragments` | Emitted text with original IDs, names, ancestry and boundary contributors. |
 | `selections` | Samples visited, the requested count, selected item output and any chance skip. |
@@ -14,10 +15,13 @@
 IDs are zero-based arrays of **original input indices**, never positions in the randomized output. A top-level literal uses `[0]`; an item at index `3` inside the sample at index `2` uses `[2, 3]`. Deeper nesting adds indices. A `ListSample` at `[2]` emits its chosen string with an ID such as `[2, 1]`, while its selection diagnostics use `[2]`. A selected `null` has no output fragment; the sample selection still reports `count: 1` and `items: ['']`.
 
 ```ts
-const result = generateSentence([
+import TextSampler from 'text-sampler'
+
+const textSampler = new TextSampler([
   'Please ',
   {name: 'action', items: [{name: 'verb', text: 'paint'}]},
 ], 0)
+const result = textSampler.trace()
 
 // result.fragments:
 // [
@@ -50,7 +54,7 @@ Selections are reported in traversal order, with a parent before its visited chi
 Ordinary callers pass sentence data directly. The optional parser accepts editable literal source without executing it:
 
 ```ts
-import {generateSentence} from 'text-sampler'
+import TextSampler from 'text-sampler'
 import {parseSource, SourceSyntaxError} from 'text-sampler/parser'
 
 try {
@@ -60,7 +64,8 @@ try {
       {items: ['paint', 'draw'], suffix: ' something'},
     ]
   `)
-  console.log(generateSentence(sentence, 42).text)
+  const textSampler = new TextSampler(sentence, 42)
+  console.log(textSampler.generate())
 } catch (error) {
   if (error instanceof SourceSyntaxError) {
     console.error(error.line, error.column, error.message)
@@ -77,6 +82,6 @@ Type aliases are skipped as balanced syntax, not type-checked. Functions, calls,
 
 # Validation
 
-Generation validates the complete input, including unselected and chance-skipped branches. `null` is allowed as a segment (including inside both sample kinds), but it is not allowed as a configuration value such as `chance` or `count`. Unknown properties, mixed segment shapes, invalid counts or chances, empty list samples, list entries other than strings or `null`, sparse arrays and circular samples are rejected with a source path. Shared non-circular subtrees are valid.
+Construction and each generation run validate the complete input, including unselected and chance-skipped branches. `null` is allowed as a segment (including inside both sample kinds), but it is not allowed as a configuration value such as `chance` or `count`. Unknown properties, mixed segment shapes, invalid counts or chances, empty list samples, list entries other than strings or `null`, sparse arrays and circular samples are rejected with a source path. Shared non-circular subtrees are valid.
 
 Validation permits at most 10 000 segment occurrences and 64 nested sample levels. The parser additionally limits input to 1 000 000 characters and 100 000 tokens. These limits apply without rewriting the supplied data.

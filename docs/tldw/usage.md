@@ -12,7 +12,7 @@ A `Sentence` is a readonly array of segments. Both custom-sample `items` and lis
 | `{token: 'a'}` | Emit `a` or `an` based on the next emitted word. |
 | `{joiner: ' '}` | Emit a fallback separator when body content survives on both sides. |
 
-Every configurable object segment accepts `name`, `prefix`, `suffix` and `chance`. A primitive string is always literal; wrap it in `{text: '…'}` to attach these properties. A `ListSample` is a bare array of strings without configuration.
+Every configurable object segment accepts `name`, `prefix`, `suffix` and `chance`. A primitive string is always literal; wrap it in `{text: '…'}` to attach these properties. A `ListSample` is a bare array of strings or `null` without configuration.
 
 ## Defaults
 
@@ -25,7 +25,7 @@ Every configurable object segment accepts `name`, `prefix`, `suffix` and `chance
 | `OuterJoiner.merge` | `true` |
 | `TextSegment.an` | Infer the article from the emitted word. |
 
-Properties with defaults are optional in the public types. Explicit `undefined` is treated as omission for optional properties. `null` is invalid. `SegmentConfiguration` applies to all object-style semantic segments, including custom samples, articles, text and fallback joiners. List samples have no configuration.
+Properties with defaults are optional in the public types. Explicit `undefined` is treated as omission for optional properties. `null` is invalid for configuration properties, but valid as an empty segment. `SegmentConfiguration` applies to all object-style semantic segments, including custom samples, articles, text and fallback joiners. List samples have no configuration.
 
 ## List samples
 
@@ -45,7 +45,8 @@ const sentence = [
   ['oil painting', 'abstract landscape'],
 ] as const satisfies Sentence
 
-const result = generateSentence(sentence, 42)
+const textSampler = new TextSampler(sentence, 42)
+const result = textSampler.trace()
 // The selected subject has an original index ID such as [2, 1].
 ```
 
@@ -91,19 +92,21 @@ Text is concatenated exactly. The library does not trim output, collapse spaces,
 Prefixes and suffixes appear only when their segment emits a body. They accept either a string or `{text: string, merge?: boolean}`.
 
 ```ts
-textSampler([
+const textSampler = new TextSampler([
   {text: 'A', suffix: ' '},
   {text: 'B', prefix: ' '},
-], 0) // 'A B'
+])
+textSampler.generate(0) // 'A B'
 ```
 
 An adjoining suffix and prefix with **equal complete strings** merge into one unless both explicitly set `merge: false`. An omitted `merge` is `true`. Empty or skipped segments expose the next surviving boundary.
 
 ```ts
-textSampler([
+const textSampler = new TextSampler([
   {text: 'A', suffix: {text: ' ', merge: false}},
   {text: 'B', prefix: {text: ' ', merge: false}},
-], 0) // 'A  B'
+])
+textSampler.generate(0) // 'A  B'
 ```
 
 Only a suffix followed by a prefix can merge. Literal whitespace blocks that adjacency. Nested prefix–prefix or suffix–suffix pairs remain distinct, and an affix participates in an outer merge only once.
@@ -140,9 +143,12 @@ The last row preserves the suffix, fallback and prefix. A JoinSegment's own pref
 `{token: 'a'}` resolves after selection and joining. It looks ahead to the first emitted word, skipping punctuation and omitted segments. Words can span fragments.
 
 ```ts
-textSampler([{token: 'a', suffix: ' '}, 'apple'], 0) // 'an apple'
-textSampler([{token: 'a', suffix: ' '}, 'university'], 0) // 'a university'
-textSampler([{token: 'a', suffix: ' '}, {text: 'SQL query', an: true}], 0) // 'an SQL query'
+const apple = new TextSampler([{token: 'a', suffix: ' '}, 'apple'])
+const university = new TextSampler([{token: 'a', suffix: ' '}, 'university'])
+const sql = new TextSampler([{token: 'a', suffix: ' '}, {text: 'SQL query', an: true}])
+apple.generate(0) // 'an apple'
+university.generate(0) // 'a university'
+sql.generate(0) // 'an SQL query'
 ```
 
 The English heuristic handles common silent consonants, vowel sounds and initialisms. It is not a pronunciation dictionary. Use `an: true` or `an: false` on a `TextSegment` for deliberate or ambiguous pronunciation. The hint applies to that text body; a preceding word emitted by its prefix determines the article first. With no following word, the token emits `a`.

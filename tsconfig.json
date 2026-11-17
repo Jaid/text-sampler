@@ -11,12 +11,14 @@
     "paths": {
       "text-sampler": [
         "./src/main.ts"
+      ],
+      "text-sampler/parser": [
+        "./src/parser.ts"
       ]
     }
   },
   "include": [
     "src/**/*.ts",
-    "examples/**/*.ts",
     "test/**/*.ts",
     "docs/tldw/**/*.ts",
     "eslint.config.ts"

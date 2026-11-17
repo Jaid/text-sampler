@@ -2,8 +2,10 @@ import type {CustomSample, ListSample, Sentence} from '#src/main.ts'
 
 import {expect, test} from 'bun:test'
 
-import {generateSentence, textSampler, validateSentence} from '#src/main.ts'
+import {validateSentence} from '#src/main.ts'
 import {parseSource} from '#src/parser.ts'
+
+import {createSampler} from './helpers.ts'
 
 test('a null list item is an empty choice with its own sampling weight', () => {
   const list: ListSample = [null, 'hello']
@@ -11,8 +13,8 @@ test('a null list item is an empty choice with its own sampling weight', () => {
   let emptyCount = 0
   let helloCount = 0
   for (let seed = 0; seed < 1000; seed++) {
-    const result = generateSentence(sentence, seed)
-    expect(result).toEqual(generateSentence(sentence, seed))
+    const result = createSampler(sentence, seed).trace()
+    expect(result).toEqual(createSampler(sentence, seed).trace())
     const selection = result.selections[0]!
     expect(selection.available).toBe(2)
     expect(selection.count).toBe(1)
@@ -35,7 +37,7 @@ test('null is the same empty item in custom and list samples', () => {
   const shorthand = [[null, 'hello']] as const satisfies Sentence
   const custom = [{items: [null, 'hello']}] as const satisfies Sentence
   for (let seed = 0; seed < 300; seed++) {
-    expect(generateSentence(shorthand, seed)).toEqual(generateSentence(custom, seed))
+    expect(createSampler(shorthand, seed).trace()).toEqual(createSampler(custom, seed).trace())
   }
 })
 test('a selected null does not emit enclosing prefixes or suffixes', () => {
@@ -53,7 +55,7 @@ test('a selected null does not emit enclosing prefixes or suffixes', () => {
   ] as const satisfies Sentence
   const output = new Set<string>
   for (let seed = 0; seed < 200; seed++) {
-    const result = generateSentence(sentence, seed)
+    const result = createSampler(sentence, seed).trace()
     output.add(result.text)
     expect(['Please now', 'Please (change) now']).toContain(result.text)
     expect(result.fragments.map(fragment => fragment.text).join('')).toBe(result.text)
@@ -70,7 +72,7 @@ test('null choices do not leave inner separators', () => {
     suffix: ']',
   }] as const satisfies Sentence
   for (let seed = 0; seed < 50; seed++) {
-    const result = generateSentence(sentence, seed)
+    const result = createSampler(sentence, seed).trace()
     expect(['[red/blue]', '[blue/red]']).toContain(result.text)
     expect(result.selections[0]?.count).toBe(3)
     expect(result.selections[0]?.items).toContain('')
@@ -87,7 +89,7 @@ test('articles look ahead past null and collapsed fallback joiners', () => {
   ] as const satisfies Sentence
   const outputs = new Set<string>
   for (let seed = 0; seed < 200; seed++) {
-    const result = generateSentence(sentence, seed)
+    const result = createSampler(sentence, seed).trace()
     outputs.add(result.text)
     expect(['a painting', 'an elegant painting']).toContain(result.text)
   }
@@ -102,7 +104,7 @@ test('null can be chosen in nested samples without changing original source indi
   }] as const satisfies Sentence
   const seen = new Set<string>
   for (let seed = 0; seed < 200; seed++) {
-    const result = generateSentence(sentence, seed)
+    const result = createSampler(sentence, seed).trace()
     seen.add(result.text)
     expect(result.selections).toHaveLength(2)
     if (result.text) {
@@ -119,7 +121,7 @@ test('repeated null positions have independent probability weight', () => {
   const sentence = [[null, null, 'hello']] as const satisfies Sentence
   let helloCount = 0
   for (let seed = 0; seed < 900; seed++) {
-    if (textSampler(sentence, seed) === 'hello') {
+    if (createSampler(sentence, seed).generate() === 'hello') {
       helloCount++
     }
   }
@@ -128,7 +130,7 @@ test('repeated null positions have independent probability weight', () => {
 })
 test('null is allowed as a direct empty segment, but not as a sample configuration value', () => {
   const sentence = ['before', null, 'after'] as const satisfies Sentence
-  expect(textSampler(sentence, 0)).toBe('beforeafter')
+  expect(createSampler(sentence, 0).generate()).toBe('beforeafter')
   expect(validateSentence(sentence)).toBe(sentence)
   const sample: CustomSample = {items: [null, 'hi']}
   expect(validateSentence([sample])).toEqual([sample])
@@ -157,7 +159,7 @@ test('the source parser accepts null choices and leaves them in their original p
     }
     expect(firstItem).toBeNull()
     for (let seed = 0; seed < 20; seed++) {
-      expect(['', 'hello']).toContain(textSampler(sentence, seed))
+      expect(['', 'hello']).toContain(createSampler(sentence, seed).generate())
     }
   }
 })
@@ -180,7 +182,7 @@ test('all-null samples still select positions but produce no text or affixes', (
     prefix: '[',
     suffix: ']',
   }] as const satisfies Sentence
-  const result = generateSentence(sentence, 0)
+  const result = createSampler(sentence, 0).trace()
   expect(result.text).toBe('')
   expect(result.fragments).toEqual([])
   expect(result.selections[0]?.count).toBe(2)

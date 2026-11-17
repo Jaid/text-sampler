@@ -1,3 +1,22 @@
+import type tinyhand from 'tinyhand'
+
+/**
+ * An unsigned 32-bit integer or an exact string used for deterministic sampling.
+ */
+export type Seed = number | string
+
+export interface TextSamplerOptions {
+  /**
+   * Default seed for every generation. Per-call seeds override it without mutation.
+   */
+  readonly seed: Seed
+}
+
+/**
+ * Constructor configuration: either a seed or an object containing that seed.
+ */
+export type TextSamplerInput = tinyhand.Wrap<'seed', TextSamplerOptions>
+
 /**
  * A segment's original indices in the sentence and nested sample item arrays.
  */
@@ -141,6 +160,10 @@ export interface GenerationResult {
    * Concatenating fragment text reproduces text exactly.
    */
   readonly fragments: ReadonlyArray<Fragment>
+  /**
+   * Seed used for this run, including the automatically chosen seed when omitted.
+   */
+  readonly seed: Seed
   readonly selections: ReadonlyArray<SampleSelection>
   readonly text: string
 }

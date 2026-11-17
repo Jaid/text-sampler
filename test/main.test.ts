@@ -2,10 +2,10 @@ import type {GenerationResult, IndefiniteArticle, InnerJoiner, JoinSegment, Oute
 
 import {expect, test} from 'bun:test'
 
-import textSampler, {generateSentence, textSampler as namedTextSampler, SentenceValidationError, validateSentence} from '#src/main.ts'
+import {SentenceValidationError, validateSentence} from '#src/main.ts'
 
 import {goldenCases, goldenSentence} from './fixtures/golden.ts'
-import {must} from './helpers.ts'
+import {createSampler, must} from './helpers.ts'
 
 const freezeDeep = <Value>(value: Value): Value => {
   if (value !== null && typeof value === 'object') {
@@ -16,7 +16,7 @@ const freezeDeep = <Value>(value: Value): Value => {
   }
   return value
 }
-test('the default API returns text and named generation retains provenance', () => {
+test('the instance API generates text and traces provenance', () => {
   const sentence: Sentence = ['Make ', {
     token: 'a',
     suffix: ' ',
@@ -24,10 +24,10 @@ test('the default API returns text and named generation retains provenance', () 
     name: 'subject',
     text: 'hourglass',
   }]
-  const text: string = textSampler(sentence, 42)
-  const result: GenerationResult = generateSentence(sentence, 42)
+  const text: string = createSampler(sentence, 42).generate()
+  const result: GenerationResult = createSampler(sentence, 42).trace()
   expect(text).toBe('Make an hourglass')
-  expect(namedTextSampler(sentence, 42)).toBe(text)
+  expect(createSampler(sentence, 42).generate()).toBe(text)
   expect(result.text).toBe(text)
   expect(result.fragments.map(fragment => fragment.text).join('')).toBe(text)
   expect(result.fragments.find(fragment => fragment.name === 'subject')?.id).toEqual([2])
@@ -58,7 +58,7 @@ test('public input types accept independently declared readonly arrays', () => {
     suffix: ' ',
   } as const, sample])
   const sentence: Sentence = readonlySentence
-  expect(textSampler(sentence, 0)).toBe('an hour')
+  expect(createSampler(sentence, 0).generate()).toBe('an hour')
 })
 test('standalone semantic types include their shared configuration', () => {
   const opening: TextSegment = {
@@ -86,7 +86,7 @@ test('standalone semantic types include their shared configuration', () => {
     suffix: '.',
     chance: 100,
   }
-  expect(textSampler([opening, article, gap, subject], 0)).toBe('Make an hourglass.')
+  expect(createSampler([opening, article, gap, subject], 0).generate()).toBe('Make an hourglass.')
 })
 test('validation returns the original input without normalizing its properties', () => {
   const sentence = [{
@@ -157,7 +157,7 @@ test('optional undefined values behave exactly like omitted values', () => {
     },
   ] as const satisfies Sentence
   for (const seed of [0, 42, 123]) {
-    expect(generateSentence(explicit, seed)).toEqual(generateSentence(omitted, seed))
+    expect(createSampler(explicit, seed).trace()).toEqual(createSampler(omitted, seed).trace())
   }
   expect(validateSentence(explicit)).toBe(explicit)
 })
@@ -238,11 +238,11 @@ test('validation errors identify the invalid data path and remain TypeErrors', (
 })
 test('seed validation rejects values outside the unsigned 32-bit integer range', () => {
   for (const seed of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, 4_294_967_296]) {
-    expect(() => textSampler(['A'], seed)).toThrow(RangeError)
-    expect(() => generateSentence(['A'], seed)).toThrow(RangeError)
+    expect(() => createSampler(['A'], seed).generate()).toThrow(RangeError)
+    expect(() => createSampler(['A'], seed).trace()).toThrow(RangeError)
   }
-  expect(textSampler(['A'], 0)).toBe('A')
-  expect(textSampler(['A'], 4_294_967_295)).toBe('A')
+  expect(createSampler(['A'], 0).generate()).toBe('A')
+  expect(createSampler(['A'], 4_294_967_295).generate()).toBe('A')
 })
 test('deep-frozen shared inputs remain unchanged through validation and generation', () => {
   const shared = {
@@ -282,10 +282,10 @@ test('deep-frozen shared inputs remain unchanged through validation and generati
   ] as const satisfies Sentence)
   const before = structuredClone(sentence)
   expect(validateSentence(sentence)).toBe(sentence)
-  const first = generateSentence(sentence, 123)
+  const first = createSampler(sentence, 123).trace()
   expect(first.text).toBe('an hour and hour ends')
-  expect(textSampler(sentence, 123)).toBe(first.text)
-  expect(generateSentence(sentence, 123)).toEqual(first)
+  expect(createSampler(sentence, 123).generate()).toBe(first.text)
+  expect(createSampler(sentence, 123).trace()).toEqual(first)
   expect(sentence).toEqual(before)
   expect(sentence[1].items[0]).toBe(sentence[1].items[1])
 })
@@ -305,8 +305,8 @@ test('inherited discriminators cannot change the validated semantic kind', () =>
 })
 test('the extracted package preserves the established seeded fixture', () => {
   for (const fixture of goldenCases) {
-    const result = generateSentence(goldenSentence, fixture.seed)
-    expect(textSampler(goldenSentence, fixture.seed)).toBe(fixture.text)
+    const result = createSampler(goldenSentence, fixture.seed).trace()
+    expect(createSampler(goldenSentence, fixture.seed).generate()).toBe(fixture.text)
     expect(result.text).toBe(fixture.text)
     const style = result.selections.find(selection => selection.name === 'style')
     expect(style?.items).toEqual(fixture.style)

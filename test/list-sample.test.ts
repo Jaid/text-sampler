@@ -2,14 +2,16 @@ import type {CustomSample, ListSample, Sample, Sentence} from '#src/main.ts'
 
 import {expect, test} from 'bun:test'
 
-import {generateSentence, textSampler, validateSentence} from '#src/main.ts'
+import {validateSentence} from '#src/main.ts'
 import {parseSource} from '#src/parser.ts'
+
+import {createSampler} from './helpers.ts'
 
 test('a list sample selects exactly one string and preserves its original indices', () => {
   const sentence = ['The', {joiner: ' '}, ['bright', 'quiet', 'starry'], {joiner: ' '}, 'night'] as const satisfies Sentence
   const seen = new Set<string>
   for (let seed = 0; seed < 40; seed++) {
-    const result = generateSentence(sentence, seed)
+    const result = createSampler(sentence, seed).trace()
     const selection = result.selections[0]!
     expect(selection.id).toEqual([2])
     expect(selection.path).toBe('sentence[2]')
@@ -32,7 +34,7 @@ test('a list is equivalent to a custom sample with only items, for complete resu
   const shorthand = ['A', {joiner: ' '}, ['one', 'two', 'three'], '!'] as const satisfies Sentence
   const custom = ['A', {joiner: ' '}, {items: ['one', 'two', 'three']}, '!'] as const satisfies Sentence
   for (let seed = 0; seed < 200; seed++) {
-    expect(generateSentence(shorthand, seed)).toEqual(generateSentence(custom, seed))
+    expect(createSampler(shorthand, seed).trace()).toEqual(createSampler(custom, seed).trace())
   }
 })
 test('list samples compose inside counted and nested custom samples', () => {
@@ -67,8 +69,8 @@ test('list samples compose inside counted and nested custom samples', () => {
     ],
   } as const satisfies CustomSample
   for (const seed of [0, 1, 5, 42, 999, 4_294_967_295]) {
-    const result = generateSentence([nested], seed)
-    expect(result).toEqual(generateSentence([expanded], seed))
+    const result = createSampler([nested], seed).trace()
+    expect(result).toEqual(createSampler([expanded], seed).trace())
     expect(result.text.startsWith('[')).toBe(true)
     expect(result.text.endsWith(']')).toBe(true)
     const nestedItem = result.fragments.find(fragment => fragment.text === 'C1' || fragment.text === 'C2')!
@@ -96,7 +98,7 @@ test('a readonly list sample stays unchanged and can be used as a Sample', () =>
   }, sample])
   const before = JSON.stringify(sentence)
   for (let seed = 0; seed < 20; seed++) {
-    const output = textSampler(sentence, seed)
+    const output = createSampler(sentence, seed).generate()
     expect(['an oil painting', 'an abstract landscape']).toContain(output)
   }
   expect(JSON.stringify(sentence)).toBe(before)
@@ -106,7 +108,7 @@ test('list sample choices use their positions even when strings repeat', () => {
   const sentence = [['same', 'same']] as const satisfies Sentence
   const ids = new Set<number>
   for (let seed = 0; seed < 50; seed++) {
-    const result = generateSentence(sentence, seed)
+    const result = createSampler(sentence, seed).trace()
     expect(result.text).toBe('same')
     ids.add(result.fragments[0]!.id[1]!)
   }
@@ -121,7 +123,7 @@ test('list samples work in editable literal and TypeScript sources', () => {
   for (const source of sources) {
     const sentence = parseSource(source)
     expect(Array.isArray(sentence[0])).toBe(true)
-    const result = generateSentence(sentence, 42)
+    const result = createSampler(sentence, 42).trace()
     expect(result.selections.length).toBe(source.includes('light') ? 2 : 1)
     expect(result.fragments.map(piece => piece.text).join('')).toBe(result.text)
   }
@@ -132,7 +134,7 @@ test('indefinite articles look ahead through a selected list item', () => {
     suffix: ' ',
   }, ['hour', 'unique painting', 'honest portrait', 'portrait']] as const satisfies Sentence
   for (let seed = 0; seed < 100; seed++) {
-    const result = generateSentence(sentence, seed)
+    const result = createSampler(sentence, seed).trace()
     const word = result.selections[0]!.items[0]!
     const article = word === 'unique painting' || word === 'portrait' ? 'a' : 'an'
     expect(result.text).toBe(`${article} ${word}`)
@@ -140,16 +142,16 @@ test('indefinite articles look ahead through a selected list item', () => {
   }
 })
 test('a top-level array is a sentence, while its array entries are list samples', () => {
-  expect(textSampler(['A', 'B'], 0)).toBe('AB')
-  expect(['A', 'B']).toContain(textSampler([['A', 'B']], 0))
+  expect(createSampler(['A', 'B'], 0).generate()).toBe('AB')
+  expect(['A', 'B']).toContain(createSampler([['A', 'B']], 0).generate())
   expect(validateSentence([['A', 'B']])).toEqual([['A', 'B']])
 })
 test('an empty list sample requires a custom sample with count zero', () => {
   expect(() => validateSentence([[]])).toThrow(/sentence\[0\].*at least one/)
-  expect(textSampler([{
+  expect(createSampler([{
     items: [],
     count: 0,
-  }], 0)).toBe('')
+  }], 0).generate()).toBe('')
 })
 test('list sample validation rejects numbers, nested arrays and semantic objects', () => {
   const invalid = [
@@ -181,7 +183,7 @@ test('a list sample cannot accept a custom sample object as its item', () => {
     joiner: ' and ',
   }
   const sentence: Sentence = [custom]
-  expect(textSampler(sentence, 0)).toMatch(/^[AB] and [AB]$/)
+  expect(createSampler(sentence, 0).generate()).toMatch(/^[AB] and [AB]$/)
   expect(() => validateSentence([[custom]])).toThrow(/sentence\[0\]\[0\]/)
 })
 test('list samples reject custom properties rather than silently ignoring configuration', () => {

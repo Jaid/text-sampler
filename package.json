@@ -32,6 +32,9 @@
     "test": "bun test --max-concurrency 1 ./test",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "tinyhand": "0.2.0"
+  },
   "devDependencies": {
     "eslint": "10.15.0",
     "eslint-config-jaid": "37.1.0",

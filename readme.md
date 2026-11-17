@@ -4,47 +4,24 @@
 
 Deterministic text generation from composable sentence segments
 
-Compose reproducible text from nested choices, optional segments and exact joining rules. Supply a sentence and a seed to get a string, or inspect every emitted fragment with its original segment ID and names.
+Compose text from nested choices, optional segments and exact joining rules. Create a `TextSampler` with a sentence, then generate text or trace the selected items and their original segment IDs. Numeric and string seeds make runs reproducible.
 
-The package has no runtime dependencies. It ships JavaScript ES modules and TypeScript declarations for Node.js, Bun and browser bundlers. Parsing editable source is available separately through `text-sampler/parser`.
+The package ships JavaScript ES modules and TypeScript declarations for Node.js, Bun and browser bundlers. Constructor shorthand is normalized with `tinyhand`; the optional literal-source parser is available separately through `text-sampler/parser`.
 
 ## minimal example
 
-Provide a typed sentence and a seed to obtain deterministic text without modifying the input. The same sentence and seed always produce the same result.
-
-The full art prompt from the playground is in [examples/gallery.ts](https://github.com/Jaid/text-sampler/blob/main/examples/gallery.ts). A shorthand example is in [examples/list.ts](https://github.com/Jaid/text-sampler/blob/main/examples/list.ts).
-
 ```ts
-import type {Sentence} from 'text-sampler'
+import TextSampler from 'text-sampler'
 
-import textSampler, {generateSentence} from 'text-sampler'
-
-const sentence = [
-  'Please make ',
-  {
-    token: 'a',
-    suffix: ' ',
-  },
-  {
-    name: 'qualities',
-    items: ['elegant', 'detailed', 'luminous'],
-    count: {
-      min: 0,
-      max: 2,
-    },
-    joiner: ' ',
-    suffix: ' ',
-  },
-  {
-    name: 'medium',
-    items: ['oil painting', 'artwork'],
-  },
-] as const satisfies Sentence
-const seed = 42
-const text = textSampler(sentence, seed)
-const result = generateSentence(sentence, seed)
+const textSampler = new TextSampler([
+  'The ',
+  ['sky', 'dog', 'cat'],
+  ' is ',
+  ['blue', 'green', 'red'],
+  '.',
+])
+const text = textSampler.generate()
 console.log(text)
-console.log(result.fragments)
 ```
 
 ## installation
@@ -73,7 +50,7 @@ A `Sentence` is a readonly array of segments. Both custom-sample `items` and lis
 | `{token: 'a'}` | Emit `a` or `an` based on the next emitted word. |
 | `{joiner: ' '}` | Emit a fallback separator when body content survives on both sides. |
 
-Every configurable object segment accepts `name`, `prefix`, `suffix` and `chance`. A primitive string is always literal; wrap it in `{text: '…'}` to attach these properties. A `ListSample` is a bare array of strings without configuration.
+Every configurable object segment accepts `name`, `prefix`, `suffix` and `chance`. A primitive string is always literal; wrap it in `{text: '…'}` to attach these properties. A `ListSample` is a bare array of strings or `null` without configuration.
 
 #### Defaults
 
@@ -86,7 +63,7 @@ Every configurable object segment accepts `name`, `prefix`, `suffix` and `chance
 | `OuterJoiner.merge` | `true` |
 | `TextSegment.an` | Infer the article from the emitted word. |
 
-Properties with defaults are optional in the public types. Explicit `undefined` is treated as omission for optional properties. `null` is invalid. `SegmentConfiguration` applies to all object-style semantic segments, including custom samples, articles, text and fallback joiners. List samples have no configuration.
+Properties with defaults are optional in the public types. Explicit `undefined` is treated as omission for optional properties. `null` is invalid for configuration properties, but valid as an empty segment. `SegmentConfiguration` applies to all object-style semantic segments, including custom samples, articles, text and fallback joiners. List samples have no configuration.
 
 #### List samples
 
@@ -106,7 +83,8 @@ const sentence = [
   ['oil painting', 'abstract landscape'],
 ] as const satisfies Sentence
 
-const result = generateSentence(sentence, 42)
+const textSampler = new TextSampler(sentence, 42)
+const result = textSampler.trace()
 // The selected subject has an original index ID such as [2, 1].
 ```
 
@@ -152,19 +130,21 @@ Text is concatenated exactly. The library does not trim output, collapse spaces,
 Prefixes and suffixes appear only when their segment emits a body. They accept either a string or `{text: string, merge?: boolean}`.
 
 ```ts
-textSampler([
+const textSampler = new TextSampler([
   {text: 'A', suffix: ' '},
   {text: 'B', prefix: ' '},
-], 0) // 'A B'
+])
+textSampler.generate(0) // 'A B'
 ```
 
 An adjoining suffix and prefix with **equal complete strings** merge into one unless both explicitly set `merge: false`. An omitted `merge` is `true`. Empty or skipped segments expose the next surviving boundary.
 
 ```ts
-textSampler([
+const textSampler = new TextSampler([
   {text: 'A', suffix: {text: ' ', merge: false}},
   {text: 'B', prefix: {text: ' ', merge: false}},
-], 0) // 'A  B'
+])
+textSampler.generate(0) // 'A  B'
 ```
 
 Only a suffix followed by a prefix can merge. Literal whitespace blocks that adjacency. Nested prefix–prefix or suffix–suffix pairs remain distinct, and an affix participates in an outer merge only once.
@@ -201,9 +181,12 @@ The last row preserves the suffix, fallback and prefix. A JoinSegment's own pref
 `{token: 'a'}` resolves after selection and joining. It looks ahead to the first emitted word, skipping punctuation and omitted segments. Words can span fragments.
 
 ```ts
-textSampler([{token: 'a', suffix: ' '}, 'apple'], 0) // 'an apple'
-textSampler([{token: 'a', suffix: ' '}, 'university'], 0) // 'a university'
-textSampler([{token: 'a', suffix: ' '}, {text: 'SQL query', an: true}], 0) // 'an SQL query'
+const apple = new TextSampler([{token: 'a', suffix: ' '}, 'apple'])
+const university = new TextSampler([{token: 'a', suffix: ' '}, 'university'])
+const sql = new TextSampler([{token: 'a', suffix: ' '}, {text: 'SQL query', an: true}])
+apple.generate(0) // 'an apple'
+university.generate(0) // 'a university'
+sql.generate(0) // 'an SQL query'
 ```
 
 The English heuristic handles common silent consonants, vowel sounds and initialisms. It is not a pronunciation dictionary. Use `an: true` or `an: false` on a `TextSegment` for deliberate or ambiguous pronunciation. The hint applies to that text body; a preceding word emitted by its prefix determines the article first. With no following word, the token emits `a`.
@@ -212,10 +195,11 @@ The English heuristic handles common silent consonants, vowel sounds and initial
 
 ### Inspecting output
 
-`generateSentence` returns:
+`textSampler.trace()` performs a generation run and returns:
 
 | Field | Meaning |
 | --- | --- |
+| `seed` | The exact seed used, including a numeric seed selected for an unseeded run. |
 | `text` | Exact generated text. |
 | `fragments` | Emitted text with original IDs, names, ancestry and boundary contributors. |
 | `selections` | Samples visited, the requested count, selected item output and any chance skip. |
@@ -226,10 +210,13 @@ The English heuristic handles common silent consonants, vowel sounds and initial
 IDs are zero-based arrays of **original input indices**, never positions in the randomized output. A top-level literal uses `[0]`; an item at index `3` inside the sample at index `2` uses `[2, 3]`. Deeper nesting adds indices. A `ListSample` at `[2]` emits its chosen string with an ID such as `[2, 1]`, while its selection diagnostics use `[2]`. A selected `null` has no output fragment; the sample selection still reports `count: 1` and `items: ['']`.
 
 ```ts
-const result = generateSentence([
+import TextSampler from 'text-sampler'
+
+const textSampler = new TextSampler([
   'Please ',
   {name: 'action', items: [{name: 'verb', text: 'paint'}]},
 ], 0)
+const result = textSampler.trace()
 
 // result.fragments:
 // [
@@ -262,7 +249,7 @@ Selections are reported in traversal order, with a parent before its visited chi
 Ordinary callers pass sentence data directly. The optional parser accepts editable literal source without executing it:
 
 ```ts
-import {generateSentence} from 'text-sampler'
+import TextSampler from 'text-sampler'
 import {parseSource, SourceSyntaxError} from 'text-sampler/parser'
 
 try {
@@ -272,7 +259,8 @@ try {
       {items: ['paint', 'draw'], suffix: ' something'},
     ]
   `)
-  console.log(generateSentence(sentence, 42).text)
+  const textSampler = new TextSampler(sentence, 42)
+  console.log(textSampler.generate())
 } catch (error) {
   if (error instanceof SourceSyntaxError) {
     console.error(error.line, error.column, error.message)
@@ -289,24 +277,97 @@ Type aliases are skipped as balanced syntax, not type-checked. Functions, calls,
 
 ### Validation
 
-Generation validates the complete input, including unselected and chance-skipped branches. `null` is allowed as a segment (including inside both sample kinds), but it is not allowed as a configuration value such as `chance` or `count`. Unknown properties, mixed segment shapes, invalid counts or chances, empty list samples, list entries other than strings or `null`, sparse arrays and circular samples are rejected with a source path. Shared non-circular subtrees are valid.
+Construction and each generation run validate the complete input, including unselected and chance-skipped branches. `null` is allowed as a segment (including inside both sample kinds), but it is not allowed as a configuration value such as `chance` or `count`. Unknown properties, mixed segment shapes, invalid counts or chances, empty list samples, list entries other than strings or `null`, sparse arrays and circular samples are rejected with a source path. Shared non-circular subtrees are valid.
 
 Validation permits at most 10 000 segment occurrences and 64 nested sample levels. The parser additionally limits input to 1 000 000 characters and 100 000 tokens. These limits apply without rewriting the supplied data.
 
 ## API
 
+### TextSampler
+
+The default export is the `TextSampler` class. Construct it with a sentence once, then call `generate()` for text or `trace()` for detailed output.
+
+```ts
+import TextSampler from 'text-sampler'
+
+const sentence = [
+  'The ',
+  ['sky', 'dog', 'cat'],
+  ' is ',
+  ['blue', 'green', 'red'],
+  '.',
+]
+
+const textSampler = new TextSampler(sentence, 'gallery')
+const text = textSampler.generate()
+const result = textSampler.trace()
+// result.text === text
+```
+
+#### Constructor
+
+```ts
+new TextSampler(sentence)
+new TextSampler(sentence, 42)
+new TextSampler(sentence, 'gallery')
+new TextSampler(sentence, {seed: 42})
+new TextSampler(sentence, {seed: 'gallery'})
+```
+
+The second argument is optional. When supplied, it is a `number`, a `string`, or a `TextSamplerOptions` object with a required `seed`. The constructor uses `tinyhand` to normalize the shorthand forms. `TextSamplerInput` is `tinyhand.Wrap<'seed', TextSamplerOptions>`.
+
+The sentence is validated immediately and before each run. Construction and generation never mutate it. The instance retains the original sentence reference rather than cloning it, so valid caller edits affect subsequent runs; invalid edits are rejected before generation. Readonly and frozen sentences are supported. Constructor options are read once, not retained as mutable configuration.
+
+#### Generation and tracing
+
+| Member | Result |
+| --- | --- |
+| `generate(seed?)` | Generate one sentence and return its exact text. |
+| `trace(seed?)` | Perform a generation run and return a `GenerationResult`. |
+| `sentence` | Readonly reference to the input sentence. |
+| `seed` | Readonly default seed, or `undefined` for an unseeded instance. |
+
+Both methods accept an optional number or string override, **not** an options object. A call-specific seed takes precedence over the instance seed without changing it:
+
+```ts
+const textSampler = new TextSampler(sentence, {seed: 'default'})
+const original = textSampler.generate()
+const alternate = textSampler.generate('alternate')
+const detailed = textSampler.trace('alternate')
+// alternate === detailed.text
+// textSampler.generate() === original
+// textSampler.seed === 'default'
+```
+
+Each explicitly seeded run starts from that seed; repeated calls do not advance a persistent random stream. `0` and `''` are valid seeds, not requests for randomness. Omitted or `undefined` method arguments use the instance default.
+
+Without either an instance seed or a call-specific seed, each run draws one fresh unsigned 32-bit seed using `Math.random()`. `trace()` reports it so the result can be reproduced:
+
+```ts
+const textSampler = new TextSampler(sentence)
+const result = textSampler.trace()
+const replay = textSampler.generate(result.seed)
+// replay === result.text
+```
+
+`trace()` is a new generation run, not an inspection of the last `generate()` call. Two unseeded calls may differ. With the same sentence and explicit seed, `trace(seed).text` equals `generate(seed)`. Each trace is a fresh result object; modifying a previous result cannot change later runs.
+
+#### Seed values
+
+Numeric seeds are integers from `0` through `4294967295`, inclusive. Invalid numbers throw `RangeError`. String seeds may be empty and are case-sensitive: whitespace and Unicode are preserved without normalization, and a numeric-looking string is not coerced to a number. Strings are reduced to a stable unsigned 32-bit state using FNV-1a over UTF-16 code units; like any 32-bit hash, collisions are possible. Seeded runs do not use ambient randomness.
+
+Other seed types, including `null`, throw `TypeError`. Supplying an options object without a valid `seed` also fails; omit the second argument to create an unseeded instance.
+
+#### Additional exports
+
 | Export | Result |
 | --- | --- |
-| `textSampler(sentence, seed)` (default export) | The generated string. |
-| `generateSentence(sentence, seed)` | Text, fragments, sample selections and article resolutions. |
-| `validateSentence(value)` | The same input after validation, typed as `Sentence`. Throws on invalid data; does not normalize or copy it. |
+| `validateSentence(value)` | Return the same input after validation, typed as `Sentence`, without normalizing or copying it. |
 | `SentenceValidationError` | A `TypeError` with a `path`, such as `sentence[2].items[0].chance`. |
-| `parseSource(source)` from `text-sampler/parser` | A validated sentence parsed from literal source text. |
+| `parseSource(source)` from `text-sampler/parser` | Parse and validate literal sentence data without evaluating code. |
 | `SourceSyntaxError` from `text-sampler/parser` | A `SyntaxError` with `offset`, `line` and `column`. |
 
-Seeds are required integers from `0` to `4294967295`, inclusive. An invalid seed throws `RangeError`. Each generation uses its own random state; calls do not affect one another and do not use `Math.random()`.
-
-The root also exports the input and result types, including `Sentence`, `Segment`, `SemanticSegment`, `Sample`, `CustomSample`, `ListSample`, `TextSegment`, `IndefiniteArticle`, `JoinSegment`, `SegmentMetadata`, `SegmentConfiguration`, `InnerJoiner`, `OuterJoiner` and `GenerationResult`.
+The root exports the public types, including `Seed`, `TextSamplerOptions`, `TextSamplerInput`, `Sentence`, `Segment`, `SemanticSegment`, `Sample`, `CustomSample`, `ListSample`, `TextSegment`, `IndefiniteArticle`, `JoinSegment`, `SegmentMetadata`, `SegmentConfiguration`, `InnerJoiner`, `OuterJoiner` and `GenerationResult`.
 
 ## development
 

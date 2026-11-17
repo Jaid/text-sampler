@@ -9,6 +9,7 @@ import type {
   ListSample,
   OuterJoiner,
   SampleSelection,
+  Seed,
   Segment,
   SegmentConfiguration,
   SegmentId,
@@ -19,6 +20,7 @@ import type {
 
 import {resolveIndefiniteArticle} from './article.ts'
 import {seededRandom} from './internal.ts'
+import {normalizeSeed} from './seed.ts'
 import {validateSentence} from './validate.ts'
 
 interface Identity extends SegmentReference {
@@ -92,14 +94,11 @@ interface PendingSelection extends Identity {
 type MutableFragment = Omit<Fragment, 'text'> & {text: string}
 
 /**
- * Generate exact text and source provenance from an unsigned 32-bit seed.
+ * Generate exact text and source provenance for one independent seeded run.
  */
-export function generateSentence(sentence: Sentence, seed: number): GenerationResult {
+export function generateSentence(sentence: Sentence, seed: Seed): GenerationResult {
   validateSentence(sentence)
-  if (!Number.isInteger(seed) || seed < 0 || seed > 4_294_967_295) {
-    throw new RangeError('Seed must be an integer from 0 to 4294967295.')
-  }
-  const random = seededRandom(seed)
+  const random = seededRandom(normalizeSeed(seed))
   const pendingSelections: Array<PendingSelection> = []
   const leaves: Array<LeafNode> = []
   function realize(segment: Segment, path: string, id: SegmentId, ancestors: ReadonlyArray<SegmentReference>): RealizedNode | null {
@@ -364,6 +363,7 @@ export function generateSentence(sentence: Sentence, seed: number): GenerationRe
     previousKey = key
   }
   return {
+    seed,
     text: fragments.map(fragment => fragment.text).join(''),
     selections,
     articleResolutions,

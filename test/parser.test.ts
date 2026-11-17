@@ -1,7 +1,9 @@
 import {expect, test} from 'bun:test'
 
-import textSampler, {SentenceValidationError} from '#src/main.ts'
+import {SentenceValidationError} from '#src/main.ts'
 import {parseSource, SourceSyntaxError} from '#src/parser.ts'
+
+import {createSampler} from './helpers.ts'
 
 test('quoted delimiters and declaration words inside type aliases remain string literals', () => {
   const source = `
@@ -10,7 +12,7 @@ test('quoted delimiters and declaration words inside type aliases remain string 
     type Shape = {opening: '{'; closing: '}'; values: ('[' | ']')[]}
     const sentence = ['literal']
   `
-  expect(textSampler(parseSource(source), 0)).toBe('literal')
+  expect(createSampler(parseSource(source), 0).generate()).toBe('literal')
 })
 test('quoted values cannot impersonate wrapper keywords or punctuation', () => {
   for (const source of ['"const" sentence = ["A"]', 'const "sentence" = ["A"]', '["A" "," "B"]', '[{text ":" "A"}]', '["A"] "as" "const"']) {
